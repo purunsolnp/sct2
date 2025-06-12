@@ -17,15 +17,21 @@ import uuid
 # 환경 변수
 DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/sct_db")
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "your-openai-key-here")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-dummy-key")
 
 # 데이터베이스 설정
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# OpenAI 클라이언트
-openai_client = OpenAI(api_key=OPENAI_API_KEY)
+# OpenAI 클라이언트 (안전한 초기화)
+openai_client = None
+if OPENAI_API_KEY and OPENAI_API_KEY != "sk-dummy-key":
+    try:
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    except Exception as e:
+        print(f"OpenAI client initialization failed: {e}")
+        openai_client = None
 
 # FastAPI 앱 초기화
 app = FastAPI(title="SCT 검사 시스템 API", version="1.0.0")
@@ -487,6 +493,10 @@ async def generate_ai_interpretation(responses: List[SCTResponse], patient_name:
         for resp in responses
     ])
     
+    # OpenAI 클라이언트가 없으면 기본 해석 반환
+    if not openai_client:
+        return generate_default_interpretation(responses, patient_name)
+    
     prompt = f"""
 당신은 20년 경력의 임상심리 전문가입니다. 다음 SCT(문장완성검사) 응답을 분석하여 전문적인 해석을 제공해주세요.
 
@@ -548,8 +558,12 @@ SCT 응답:
         return response.choices[0].message.content
         
     except Exception as e:
-        # OpenAI API 오류시 기본 해석 반환
-        return f"""
+        print(f"OpenAI API error: {e}")
+        return generate_default_interpretation(responses, patient_name)
+
+# 기본 해석 생성 함수
+def generate_default_interpretation(responses: List[SCTResponse], patient_name: str) -> str:
+    return f"""
 # SCT 검사 해석 보고서
 
 **환자명:** {patient_name}
@@ -577,7 +591,8 @@ SCT 응답:
 - 지속적인 관찰 및 추가 평가 필요
 - 강점 활용 및 발전 영역 확인
 
-*주의: AI 기반 초기 분석이므로 전문가의 직접 검토가 필요합니다.*
+*주의: 기본 분석이므로 전문가의 직접 검토가 필요합니다.*
+*OpenAI API 연동 후 더 상세한 해석이 제공됩니다.*
 """
 
 if __name__ == "__main__":

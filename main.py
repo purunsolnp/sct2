@@ -8,7 +8,7 @@ from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 from typing import Optional, List
 import hashlib
-import jwt
+import jwt  # PyJWT 라이브러리
 import os
 from openai import OpenAI
 import json

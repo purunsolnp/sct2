@@ -506,7 +506,7 @@ async def generate_sct_interpretation(session_id: str) -> str:
 
         # OpenAI API 호출
         response = openai_client.chat.completions.create(
-            model="gpt-4o",  # 최신 모델 사용
+            model="gpt-4o-mini",  # 최신 모델 사용
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}

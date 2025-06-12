@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import uuid
 import os
+from sqlalchemy import create_engine, text
 from openai import OpenAI  # 수정된 import
 import json
 from dotenv import load_dotenv

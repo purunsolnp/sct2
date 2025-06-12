@@ -234,7 +234,7 @@ https://yoursite.com/patient.html?session=세션ID
         // 페이지 로드 시 API 상태 확인
         document.addEventListener('DOMContentLoaded', async function() {
             try {
-                const response = await fetch('http://localhost:8000/health');
+                const response = await fetch('https://sct-backend-7epf.onrender.com');
                 if (response.ok) {
                     console.log('✅ API 서버가 정상적으로 작동 중입니다.');
                 } else {

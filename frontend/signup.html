@@ -412,9 +412,34 @@
     </div>
 
     <script>
-        const API_BASE = window.location.hostname === 'localhost' 
-            ? 'http://localhost:8000' 
-            : 'https://sct-backend-7epf.onrender.com'; // 실제 백엔드 URL로 변경
+        const API_BASE = 'https://sct-backend-7epf.onrender.com';  // 👈 이미 수정했음
+    
+        // 👇 바로 여기에 함수 추가!
+        async function safeApiCall(url, options = {}) {
+            try {
+                console.log('API 호출 시도:', url);
+                
+                const response = await fetch(url, {
+                    ...options,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...options.headers
+                    }
+                });
+                
+                console.log('응답 받음:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`서버 오류: ${response.status}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API 오류:', error);
+                alert('서버 연결에 문제가 있습니다. 잠시 후 다시 시도해주세요.');
+                throw error;
+            }
+        }
         let isIdChecked = false;
         let isIdAvailable = false;
         

@@ -1,4 +1,4 @@
-<div class="header-content<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -9,6 +9,7 @@
     <!-- html2canvas 라이브러리 추가 (한글 지원용) -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <style>
+        /* 기존 CSS 유지 */
         * {
             margin: 0;
             padding: 0;
@@ -469,6 +470,20 @@
         .pdf-button:hover {
             box-shadow: 0 8px 25px rgba(229, 62, 62, 0.3);
         }
+        
+        /* 디버그 정보 스타일 */
+        .debug-info {
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            padding: 10px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 0.8em;
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
     </style>
 </head>
 <body>
@@ -486,6 +501,13 @@
     </div>
     
     <div class="container">
+        <!-- 디버그 정보 (개발용) -->
+        <div id="debug-info" class="debug-info">
+            <strong>디버그 정보:</strong><br>
+            <div id="debug-content"></div>
+        </div>
+        <button onclick="toggleDebug()" class="button-secondary" style="margin-bottom: 20px;">🐛 디버그 정보 토글</button>
+        
         <!-- 통계 카드 -->
         <div class="stats-grid">
             <div class="stat-card">
@@ -606,13 +628,43 @@
         // 전역 변수
         const API_BASE = window.location.hostname === 'localhost' 
             ? 'http://localhost:8000' 
-            : 'https://sct-backend-7epf.onrender.com'; // 실제 백엔드 URL로 변경
+            : 'https://sct-backend-7epf.onrender.com';
         let doctorId = '';
         let doctorName = '';
         let sessions = [];
         let currentSessionLink = '';
         let currentSessionId = '';
         let currentInterpretation = '';
+        let debugMode = false;
+        
+        // 디버그 함수
+        function debugLog(message, data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logMessage = `[${timestamp}] ${message}`;
+            console.log(logMessage, data || '');
+            
+            if (debugMode) {
+                const debugContent = document.getElementById('debug-content');
+                const logEntry = document.createElement('div');
+                logEntry.innerHTML = `${logMessage}${data ? ': ' + JSON.stringify(data, null, 2) : ''}`;
+                debugContent.appendChild(logEntry);
+                debugContent.scrollTop = debugContent.scrollHeight;
+            }
+        }
+        
+        function toggleDebug() {
+            debugMode = !debugMode;
+            const debugInfo = document.getElementById('debug-info');
+            debugInfo.style.display = debugMode ? 'block' : 'none';
+            
+            if (debugMode) {
+                document.getElementById('debug-content').innerHTML = '';
+                debugLog('디버그 모드 활성화');
+                debugLog('현재 API_BASE', API_BASE);
+                debugLog('현재 doctorId', doctorId);
+                debugLog('현재 sessions 수', sessions.length);
+            }
+        }
         
         // API 헤더 (JWT 토큰 포함)
         function getApiHeaders() {
@@ -625,6 +677,8 @@
         
         // 페이지 로드 시 실행
         document.addEventListener('DOMContentLoaded', function() {
+            debugLog('페이지 로드 시작');
+            
             // 로그인 확인
             const currentUser = localStorage.getItem('currentUser');
             if (!currentUser) {
@@ -637,6 +691,8 @@
             const userData = JSON.parse(currentUser);
             doctorId = userData.doctorId;
             doctorName = userData.name;
+            
+            debugLog('사용자 정보 로드', { doctorId, doctorName });
             
             document.getElementById('doctor-id').textContent = doctorId;
             document.getElementById('doctor-name').textContent = doctorName;
@@ -651,11 +707,12 @@
         function logout() {
             if (confirm('정말 로그아웃 하시겠습니까?')) {
                 localStorage.removeItem('currentUser');
+                localStorage.removeItem('access_token');
                 window.location.href = 'login.html';
             }
         }
         
-        // 새 세션 생성 (실제 API 호출)
+        // 새 세션 생성 (수정된 버전)
         async function createSession(event) {
             event.preventDefault();
             
@@ -665,15 +722,23 @@
                 return;
             }
             
+            debugLog('새 세션 생성 시작', { patientName, doctorId });
+            
             try {
+                const requestBody = {
+                    patient_name: patientName,
+                    assigned_by: doctorId
+                };
+                
+                debugLog('전송할 데이터', requestBody);
+                
                 const response = await fetch(`${API_BASE}/sct/sessions`, {
                     method: 'POST',
                     headers: getApiHeaders(),
-                    body: JSON.stringify({
-                        patient_name: patientName,
-                        assigned_by: doctorId
-                    })
+                    body: JSON.stringify(requestBody)
                 });
+                
+                debugLog('세션 생성 응답 상태', response.status);
                 
                 if (!response.ok) {
                     if (response.status === 401) {
@@ -684,10 +749,12 @@
                         return;
                     }
                     const errorData = await response.json();
+                    debugLog('세션 생성 오류', errorData);
                     throw new Error(errorData.detail || '세션 생성에 실패했습니다.');
                 }
                 
                 const sessionData = await response.json();
+                debugLog('생성된 세션', sessionData);
                 
                 // 성공 메시지 및 링크 표시
                 const patientLink = `${window.location.origin}/patient.html?session=${sessionData.session_id}`;
@@ -700,23 +767,30 @@
                 document.getElementById('patient-name').value = '';
                 
                 // 세션 목록 새로고침
-                loadSessions();
+                await loadSessions();
                 
             } catch (error) {
+                debugLog('세션 생성 오류', error.message);
                 alert('세션 생성 중 오류가 발생했습니다: ' + error.message);
             }
         }
         
-        // 세션 목록 로드 (실제 API 호출)
+        // 세션 목록 로드 (수정된 버전)
         async function loadSessions() {
+            debugLog('세션 목록 로드 시작');
             document.getElementById('sessions-loading').style.display = 'block';
             document.getElementById('sessions-table').style.display = 'none';
             document.getElementById('no-sessions').style.display = 'none';
             
             try {
-                const response = await fetch(`${API_BASE}/sct/sessions/by-user/${doctorId}`, {
+                const url = `${API_BASE}/sct/sessions/by-user/${doctorId}`;
+                debugLog('API 요청 URL', url);
+                
+                const response = await fetch(url, {
                     headers: getApiHeaders()
                 });
+                
+                debugLog('API 응답 상태', response.status);
                 
                 if (!response.ok) {
                     if (response.status === 401) {
@@ -727,32 +801,43 @@
                         return;
                     }
                     const errorText = await response.text();
-                    console.error('API Response:', errorText);
+                    debugLog('API 응답 오류', errorText);
                     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
                 
                 const data = await response.json();
-                sessions = data.sessions || [];
+                debugLog('받은 데이터', data);
                 
-                console.log('Loaded sessions:', sessions);
+                // 데이터 구조 확인 및 정규화
+                sessions = Array.isArray(data) ? data : (data.sessions || []);
+                debugLog('처리된 세션 데이터', sessions);
                 
                 updateStats();
                 renderSessionsTable();
                 
             } catch (error) {
-                console.error('Load sessions error:', error);
+                debugLog('세션 로드 오류', error.message);
                 alert('세션 목록 로드 중 오류가 발생했습니다: ' + error.message);
+                
+                // 오류 발생 시 빈 배열로 초기화
+                sessions = [];
+                updateStats();
+                renderSessionsTable();
             } finally {
                 document.getElementById('sessions-loading').style.display = 'none';
             }
         }
         
-        // 통계 업데이트
+        // 통계 업데이트 (수정된 버전)
         function updateStats() {
-            const total = sessions.length;
-            const completed = sessions.filter(s => s.status === 'complete').length;
-            const pending = sessions.filter(s => s.status === 'incomplete').length;
-            const expired = sessions.filter(s => s.status === 'expired').length;
+            debugLog('통계 업데이트', sessions);
+            
+            const total = sessions ? sessions.length : 0;
+            const completed = sessions ? sessions.filter(s => s.status === 'complete').length : 0;
+            const pending = sessions ? sessions.filter(s => s.status === 'incomplete').length : 0;
+            const expired = sessions ? sessions.filter(s => s.status === 'expired').length : 0;
+            
+            debugLog('통계 결과', { total, completed, pending, expired });
             
             document.getElementById('total-sessions').textContent = total;
             document.getElementById('completed-sessions').textContent = completed;
@@ -760,59 +845,47 @@
             document.getElementById('expired-sessions').textContent = expired;
         }
         
-        // 세션 테이블 렌더링
+        // 세션 테이블 렌더링 (수정된 버전)
         function renderSessionsTable() {
+            debugLog('테이블 렌더링 시작', `세션 수: ${sessions.length}`);
             const tbody = document.getElementById('sessions-tbody');
             tbody.innerHTML = '';
             
-            if (sessions.length === 0) {
+            if (!sessions || sessions.length === 0) {
                 document.getElementById('no-sessions').style.display = 'block';
+                document.getElementById('sessions-table').style.display = 'none';
+                debugLog('세션이 없음');
                 return;
             }
             
             document.getElementById('sessions-table').style.display = 'table';
+            document.getElementById('no-sessions').style.display = 'none';
             
-            sessions.forEach(session => {
+            sessions.forEach((session, index) => {
+                debugLog(`세션 ${index + 1} 처리`, session);
+                
                 const row = document.createElement('tr');
                 
-                // 날짜 포맷팅
-                const createdAt = new Date(session.created_at).toLocaleDateString('ko-KR');
-                const submittedAt = session.submitted_at ? new Date(session.submitted_at).toLocaleDateString('ko-KR') : '-';
-                const expiresAt = new Date(session.expires_at).toLocaleDateString('ko-KR');
+                // 안전한 데이터 추출
+                const patientName = session.patient_name || session.patientName || 'Unknown';
+                const sessionId = session.session_id || session.sessionId || 'Unknown';
+                const status = session.status || 'unknown';
+                
+                // 날짜 포맷팅 (더 안전한 방식)
+                const createdAt = formatDate(session.created_at || session.createdAt);
+                const submittedAt = formatDate(session.submitted_at || session.submittedAt);
+                const expiresAt = formatDate(session.expires_at || session.expiresAt);
+                
+                debugLog(`날짜 포맷팅 결과`, { createdAt, submittedAt, expiresAt });
                 
                 // 상태 뱃지
-                let statusClass = '';
-                let statusText = '';
-                switch (session.status) {
-                    case 'incomplete':
-                        statusClass = 'status-incomplete';
-                        statusText = '대기중';
-                        break;
-                    case 'complete':
-                        statusClass = 'status-complete';
-                        statusText = '완료';
-                        break;
-                    case 'expired':
-                        statusClass = 'status-expired';
-                        statusText = '만료';
-                        break;
-                }
+                const { statusClass, statusText } = getStatusInfo(status);
                 
                 // 작업 버튼들
-                let actionButtons = '';
-                if (session.status === 'incomplete') {
-                    const patientLink = `${window.location.origin}/patient.html?session=${session.session_id}`;
-                    actionButtons = `
-                        <button onclick="copySessionLink('${patientLink}')" class="action-button copy">링크 복사</button>
-                    `;
-                } else if (session.status === 'complete') {
-                    actionButtons = `
-                        <button onclick="openAnalysisModal('${session.session_id}')" class="action-button interpret">📊 전문 해석</button>
-                    `;
-                }
+                const actionButtons = generateActionButtons(session, sessionId);
                 
                 row.innerHTML = `
-                    <td>${session.patient_name}</td>
+                    <td>${patientName}</td>
                     <td>${createdAt}</td>
                     <td>${submittedAt}</td>
                     <td>${expiresAt}</td>
@@ -826,6 +899,99 @@
                 
                 tbody.appendChild(row);
             });
+            
+            debugLog('테이블 렌더링 완료');
+        }
+        
+        // 안전한 날짜 포맷팅 함수
+        function formatDate(dateString) {
+            if (!dateString) {
+                return '-';
+            }
+            
+            try {
+                // ISO 날짜 문자열 정규화
+                let normalizedDate = dateString;
+                
+                // Z로 끝나는 경우 UTC로 처리
+                if (dateString.endsWith('Z')) {
+                    normalizedDate = dateString;
+                }
+                // +00:00 형태인 경우 Z로 변환
+                else if (dateString.includes('+00:00')) {
+                    normalizedDate = dateString.replace('+00:00', 'Z');
+                }
+                // T가 없는 경우 추가
+                else if (!dateString.includes('T') && dateString.includes(' ')) {
+                    normalizedDate = dateString.replace(' ', 'T') + 'Z';
+                }
+                
+                const date = new Date(normalizedDate);
+                
+                // 유효한 날짜인지 확인
+                if (isNaN(date.getTime())) {
+                    debugLog('잘못된 날짜 형식', dateString);
+                    return 'Invalid Date';
+                }
+                
+                // 한국 시간으로 변환하여 표시
+                return date.toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+            } catch (error) {
+                debugLog('날짜 포맷팅 오류', { error: error.message, original: dateString });
+                return 'Format Error';
+            }
+        }
+        
+        // 상태 정보 반환
+        function getStatusInfo(status) {
+            let statusClass = '';
+            let statusText = '';
+            
+            switch (status) {
+                case 'incomplete':
+                    statusClass = 'status-incomplete';
+                    statusText = '대기중';
+                    break;
+                case 'complete':
+                    statusClass = 'status-complete';
+                    statusText = '완료';
+                    break;
+                case 'expired':
+                    statusClass = 'status-expired';
+                    statusText = '만료';
+                    break;
+                default:
+                    statusClass = 'status-incomplete';
+                    statusText = '알 수 없음';
+            }
+            
+            return { statusClass, statusText };
+        }
+        
+        // 작업 버튼 생성
+        function generateActionButtons(session, sessionId) {
+            const status = session.status || 'incomplete';
+            let actionButtons = '';
+            
+            if (status === 'incomplete') {
+                const patientLink = `${window.location.origin}/patient.html?session=${sessionId}`;
+                actionButtons = `
+                    <button onclick="copySessionLink('${patientLink}')" class="action-button copy">링크 복사</button>
+                `;
+            } else if (status === 'complete') {
+                actionButtons = `
+                    <button onclick="openAnalysisModal('${sessionId}')" class="action-button interpret">📊 전문 해석</button>
+                `;
+            }
+            
+            return actionButtons;
         }
         
         // 링크 복사
@@ -849,11 +1015,13 @@
         
         // 세션 목록 새로고침
         function refreshSessions() {
+            debugLog('세션 목록 새로고침 요청');
             loadSessions();
         }
         
         // 분석 모달 열기
         async function openAnalysisModal(sessionId) {
+            debugLog('분석 모달 열기', sessionId);
             currentSessionId = sessionId;
             const modal = document.getElementById('interpretation-modal');
             modal.style.display = 'block';
@@ -867,6 +1035,8 @@
         
         // 탭 전환
         function switchTab(tabName) {
+            debugLog('탭 전환', tabName);
+            
             // 모든 탭 비활성화
             document.querySelectorAll('.modal-tab').forEach(tab => {
                 tab.classList.remove('active');
@@ -889,6 +1059,8 @@
         
         // 전문 해석 생성 (실제 API 호출)
         async function generateInterpretation(sessionId) {
+            debugLog('전문 해석 생성 시작', sessionId);
+            
             const loading = document.getElementById('interpretation-loading');
             const content = document.getElementById('interpretation-content');
             const actions = document.getElementById('interpretation-actions');
@@ -903,12 +1075,17 @@
                     headers: getApiHeaders()
                 });
                 
+                debugLog('해석 조회 응답', interpretationResponse.status);
+                
                 if (interpretationResponse.status === 404) {
+                    debugLog('해석이 없음, 새로 생성');
                     // 해석이 없으면 새로 생성
                     const generateResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpret`, {
                         method: 'POST',
                         headers: getApiHeaders()
                     });
+                    
+                    debugLog('해석 생성 응답', generateResponse.status);
                     
                     if (!generateResponse.ok) {
                         const errorData = await generateResponse.json();
@@ -933,6 +1110,8 @@
                 }
                 
                 const data = await interpretationResponse.json();
+                debugLog('해석 데이터 수신', data);
+                
                 currentInterpretation = data.interpretation;
                 
                 loading.style.display = 'none';
@@ -942,6 +1121,7 @@
                 actions.style.display = 'block';
                 
             } catch (error) {
+                debugLog('해석 생성 오류', error.message);
                 loading.style.display = 'none';
                 content.innerHTML = `
                     <div class="alert alert-error">
@@ -974,6 +1154,8 @@
         
         // 카테고리별 분석 로드
         async function loadCategoricalAnalysis(sessionId) {
+            debugLog('카테고리별 분석 로드', sessionId);
+            
             const loading = document.getElementById('analysis-loading');
             const content = document.getElementById('analysis-content');
             
@@ -988,6 +1170,7 @@
                 }
                 
                 const data = await response.json();
+                debugLog('카테고리 분석 데이터', data);
                 
                 loading.style.display = 'none';
                 
@@ -1028,6 +1211,7 @@
                 content.innerHTML = html;
                 
             } catch (error) {
+                debugLog('카테고리 분석 로드 오류', error.message);
                 loading.style.display = 'none';
                 content.innerHTML = `
                     <div class="alert alert-error">
@@ -1039,6 +1223,8 @@
         
         // 전체 응답 로드
         async function loadAllResponses(sessionId) {
+            debugLog('전체 응답 로드', sessionId);
+            
             const content = document.getElementById('responses-content');
             
             try {
@@ -1049,6 +1235,7 @@
                 }
                 
                 const data = await response.json();
+                debugLog('전체 응답 데이터', data);
                 
                 let html = '<div style="max-height: 500px; overflow-y: auto;">';
                 
@@ -1069,6 +1256,7 @@
                 content.innerHTML = html;
                 
             } catch (error) {
+                debugLog('전체 응답 로드 오류', error.message);
                 content.innerHTML = `
                     <div class="alert alert-error">
                         오류: ${error.message}
@@ -1133,7 +1321,7 @@
                 pdf.save(`SCT_해석보고서_${patientName}_${today}.pdf`);
                 
             } catch (error) {
-                console.error('PDF 생성 오류:', error);
+                debugLog('PDF 생성 오류', error.message);
                 alert('PDF 생성 중 오류가 발생했습니다. 텍스트 다운로드를 이용해주세요.');
             }
         }

@@ -339,15 +339,24 @@ async def create_session(
 ):
     try:
         logger.info(f"🏗️ 새 세션 생성 요청: patient={session_data.patient_name}, doctor={current_user}")
+        logger.info(f"🔍 입력받은 patient_name: '{session_data.patient_name}' (타입: {type(session_data.patient_name)})")
         
         session_id = str(uuid.uuid4())
         expires_at = datetime.utcnow() + timedelta(days=7)
         current_time = datetime.utcnow()
         
+        # patient_name 검증 및 정제
+        patient_name = session_data.patient_name.strip() if session_data.patient_name else None
+        if not patient_name:
+            logger.error(f"❌ patient_name이 비어있음: '{session_data.patient_name}'")
+            raise HTTPException(status_code=400, detail="환자 이름이 비어있습니다")
+        
+        logger.info(f"🔍 정제된 patient_name: '{patient_name}'")
+        
         db_session = SCTSession(
             session_id=session_id,
             doctor_id=current_user,
-            patient_name=session_data.patient_name,
+            patient_name=patient_name,  # 정제된 이름 사용
             status="incomplete",
             created_at=current_time,
             expires_at=expires_at
@@ -357,11 +366,13 @@ async def create_session(
         db.commit()
         db.refresh(db_session)
         
+        # 저장 후 확인
+        logger.info(f"🔍 DB 저장 후 patient_name: '{db_session.patient_name}'")
         logger.info(f"✅ 새 세션 생성 완료: {session_id}")
         
         return {
             "session_id": session_id, 
-            "patient_name": session_data.patient_name,
+            "patient_name": db_session.patient_name,  # DB에서 읽은 값 사용
             "doctor_id": current_user,
             "status": "incomplete",
             "created_at": current_time.isoformat(),

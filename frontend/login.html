@@ -293,7 +293,7 @@
     <script>
         const API_BASE = window.location.hostname === 'localhost' 
             ? 'http://localhost:8000' 
-            : 'https://sct-backend-7epf.onrender.com'; // 실제 백엔드 URL로 변경
+            : 'https://sct-backend-7epf.onrender.com';
         
         // 페이지 로드 시 실행
         document.addEventListener('DOMContentLoaded', function() {
@@ -328,14 +328,12 @@
             loginBtn.innerHTML = '<div class="loading-spinner"></div>로그인 중...';
             
             try {
-                // 실제 API 호출 (현재는 데모용 로직)
-                const isValidLogin = await validateLogin(doctorId, password);
-                
-                if (isValidLogin) {
-                    // 로그인 성공
+                // 먼저 데모 계정 확인
+                if (isDemoAccount(doctorId, password)) {
+                    // 데모 계정 로그인 성공
                     const userData = {
                         doctorId: doctorId,
-                        name: getDoctorName(doctorId),
+                        name: getDemoAccountName(doctorId),
                         loginTime: new Date().toISOString()
                     };
                     
@@ -347,23 +345,10 @@
                         window.location.href = 'doctor.html';
                     }, 1500);
                     
-                } else {
-                    showAlert('잘못된 ID 또는 비밀번호입니다.', 'error');
+                    return;
                 }
                 
-            } catch (error) {
-                console.error('Login error:', error);
-                showAlert('로그인 중 오류가 발생했습니다. 다시 시도해주세요.', 'error');
-            } finally {
-                // 로딩 상태 해제
-                loginBtn.disabled = false;
-                loginBtn.innerHTML = originalText;
-            }
-        }
-        
-        // 로그인 검증 (실제 API 호출)
-        async function validateLogin(doctorId, password) {
-            try {
+                // 실제 API 호출
                 const response = await fetch(`${API_BASE}/auth/login`, {
                     method: 'POST',
                     headers: {
@@ -377,6 +362,7 @@
 
                 if (response.ok) {
                     const data = await response.json();
+                    
                     // 토큰과 사용자 정보 저장
                     localStorage.setItem('access_token', data.access_token);
                     localStorage.setItem('currentUser', JSON.stringify({
@@ -387,42 +373,46 @@
                         hospital: data.user_info.hospital,
                         loginTime: new Date().toISOString()
                     }));
-                    return true;
+                    
+                    showAlert('로그인 성공! 대시보드로 이동합니다...', 'success');
+                    
+                    setTimeout(() => {
+                        window.location.href = 'doctor.html';
+                    }, 1500);
+                    
                 } else {
                     const errorData = await response.json();
                     console.error('Login failed:', errorData);
-                    return false;
+                    showAlert('잘못된 ID 또는 비밀번호입니다.', 'error');
                 }
+                
             } catch (error) {
-                console.error('Network error:', error);
-                return false;
+                console.error('Login error:', error);
+                showAlert('로그인 중 오류가 발생했습니다. 서버 연결을 확인해주세요.', 'error');
+            } finally {
+                // 로딩 상태 해제
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = originalText;
             }
-        }
-
-        // 의사 이름 가져오기 (현재 사용자 정보에서)
-        function getDoctorName(doctorId) {
-            const currentUser = localStorage.getItem('currentUser');
-            if (currentUser) {
-                const userData = JSON.parse(currentUser);
-                return userData.name;
-            }
-            return doctorId;
-        }'password123',
-                'doctor2': 'password123',
-                'admin': 'admin123',
-                'doctor123': 'password' // 기존 테스트 계정
-            };
-            
-            return validAccounts[doctorId] === password;
         }
         
-        // 의사 이름 가져오기
-        function getDoctorName(doctorId) {
+        // 데모 계정 확인
+        function isDemoAccount(doctorId, password) {
+            const demoAccounts = {
+                'doctor1': 'password123',
+                'doctor2': 'password123', 
+                'admin': 'admin123'
+            };
+            
+            return demoAccounts[doctorId] === password;
+        }
+        
+        // 데모 계정 이름 가져오기
+        function getDemoAccountName(doctorId) {
             const names = {
                 'doctor1': '김의사',
                 'doctor2': '이의사',
-                'admin': '관리자',
-                'doctor123': '테스트의사'
+                'admin': '관리자'
             };
             return names[doctorId] || doctorId;
         }

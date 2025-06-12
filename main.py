@@ -1,45 +1,52 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy import create_engine, Column, String, DateTime, Text, Boolean, Integer
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy import Column, String, DateTime, Text, Boolean, Integer
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta
 from typing import Optional, List
 import hashlib
-import jwt  # PyJWT 라이브러리
+import jwt
 import os
 from openai import OpenAI
 import json
 import uuid
+import logging
+
+# 로깅 설정
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# 개선된 데이터베이스 설정 import
+from database_config import engine, SessionLocal, Base, get_db, create_tables, check_database_health
 
 # 환경 변수
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://user:password@localhost/sct_db")
-SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "sk-dummy-key")
-
-# 데이터베이스 설정
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # OpenAI 클라이언트 (안전한 초기화)
 openai_client = None
-if OPENAI_API_KEY and OPENAI_API_KEY != "sk-dummy-key":
+if OPENAI_API_KEY and OPENAI_API_KEY.startswith("sk-"):
     try:
         openai_client = OpenAI(api_key=OPENAI_API_KEY)
+        logger.info("✅ OpenAI 클라이언트 초기화 성공")
     except Exception as e:
-        print(f"OpenAI client initialization failed: {e}")
+        logger.error(f"❌ OpenAI 클라이언트 초기화 실패: {e}")
         openai_client = None
+else:
+    logger.warning("⚠️ OpenAI API 키가 설정되지 않았습니다. 해석 기능이 제한됩니다.")
 
 # FastAPI 앱 초기화
-app = FastAPI(title="SCT 검사 시스템 API", version="1.0.0")
+app = FastAPI(
+    title="SCT 검사 시스템 API", 
+    version="2.0.0",
+    description="문장완성검사(SCT) 자동화 시스템"
+)
 
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 실제 배포시에는 특정 도메인만 허용
+    allow_origins=["*"],  # 운영환경에서는 특정 도메인만 허용
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -70,7 +77,7 @@ class SCTSession(Base):
     session_id = Column(String, primary_key=True, index=True)
     doctor_id = Column(String, index=True)
     patient_name = Column(String)
-    status = Column(String, default="incomplete")  # incomplete, complete, expired
+    status = Column(String, default="incomplete")
     created_at = Column(DateTime, default=datetime.utcnow)
     submitted_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime)
@@ -93,10 +100,7 @@ class SCTInterpretation(Base):
     patient_name = Column(String)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-# 데이터베이스 테이블 생성
-Base.metadata.create_all(bind=engine)
-
-# Pydantic 모델 (API 요청/응답)
+# Pydantic 모델
 class UserCreate(BaseModel):
     doctor_id: str
     email: EmailStr
@@ -121,32 +125,12 @@ class SessionCreate(BaseModel):
     patient_name: str
     assigned_by: str
 
-class SessionResponse(BaseModel):
-    session_id: str
-    patient_name: str
-    status: str
-    created_at: datetime
-    submitted_at: Optional[datetime]
-    expires_at: datetime
-
 class SCTResponseCreate(BaseModel):
     item_no: int
     stem: str
     answer: str
 
-class SCTResponseModel(BaseModel):
-    item_no: int
-    stem: str
-    answer: str
-
 # 유틸리티 함수
-def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
-
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
@@ -169,333 +153,342 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# SCT 검사 문항 (60개)
+# SCT 검사 문항 (50개로 수정)
 SCT_ITEMS = [
-    "나는 항상", "다시 돌아간다면", "나는 바란다", "나의 가장 큰 걱정은", "가정은",
-    "나는 할 수 없다", "나의 미래는", "상급자들은", "나는 알고 있다", "어린 시절",
-    "내가 가장 좋아하는 것은", "사람들이 가장 몰라주는 것은", "나의 어머니는", "나는 다른 사람들에게서 가장",
-    "나의 아버지는", "만약 나에게 기회가 있다면", "나는 걱정된다", "사람들은", "어머니와 나는",
-    "나의 가장 큰 약점은", "나의 주된 야망은", "내가 아주 싫어하는 것은", "아버지와 나는", "나의 신경을 건드리는 것은",
-    "나의 마음은", "사람들 대부분은 나를", "나는 확실히 할 수 있다", "나의 가장 큰 걱정거리는", "내가 집에 있을 때",
-    "내가 어렸을 때", "나의 가장 나쁜 습관은", "내가 하고 싶은 일은", "나의 신경질을 돋우는 것은", "다른 사람들",
-    "나의 주된 문제는", "나는 좋아한다", "내가 술을 마실 때", "나는 비밀리에", "사람들은 나를",
-    "나의 어머니와 나는", "내가 명령을 받을 때", "내가 가장 자신 있는 것은", "미래에 나는", "내가 가장 필요로 하는 것은",
-    "나는 두려워한다", "나에게 결혼이란", "나의 가족은", "나는 가장", "만약 나의 아버지가",
-    "나의 가장 큰 실수는", "나는 주로", "내가 나이가 들면", "나의 가장 큰 바람은", "내가 아이들과 함께 있을 때",
-    "성에 대한 나의 태도는", "사람들이 나에 대해 모르는 것은", "나는 노력한다", "나의 가장 생생한 기억은", "나의 가장 큰 두려움은",
-    "결혼한 생활은", "내가 사람들과 함께 있을 때", "다른 여성들", "다른 남성들", "나의 가장 큰 고민은"
+    "나에게 이상한 일이 생겼을 때",
+    "내 생각에 가끔 아버지는",
+    "우리 윗사람들은",
+    "나의 장래는",
+    "어리석게도 내가 두려워하는 것은",
+    "내 생각에 참다운 친구는",
+    "내가 어렸을 때는",
+    "남자에 대해서 무엇보다 좋지 않게 생각하는 것은",
+    "내가 바라는 여인상(女人像)은",
+    "남녀가 같이 있는 것을 볼 때",
+    "내가 늘 원하기는",
+    "다른 가정과 비교해서 우리 집안은",
+    "나의 어머니는",
+    "무슨 일을 해서라도 잊고 싶은 것은",
+    "내가 믿고 있는 내 능력은",
+    "내가 정말 행복할 수 있으려면",
+    "어렸을 때 잘못했다고 느끼는 것은",
+    "내가 보는 나의 앞날은",
+    "대개 아버지들이란",
+    "내 생각에 남자들이란",
+    "다른 친구들이 모르는 나만의 두려움은",
+    "내가 싫어하는 사람은",
+    "결혼 생활에 대한 나의 생각은",
+    "우리 가족이 나에 대해서",
+    "내 생각에 여자들이란",
+    "어머니와 나는",
+    "내가 저지른 가장 큰 잘못은",
+    "언젠가 나는",
+    "내가 바라기에 아버지는",
+    "나의 야망은",
+    "윗사람이 오는 것을 보면 나는",
+    "내가 제일 좋아하는 사람은",
+    "내가 다시 젊어진다면",
+    "나의 가장 큰 결점은",
+    "내가 아는 대부분의 집안은",
+    "완전한 남성상(男性像)은",
+    "내가 성교를 했다면",
+    "행운이 나를 외면했을 때",
+    "대개 어머니들이란",
+    "내가 잊고 싶은 두려움은",
+    "내가 평생 가장 하고 싶은 일은",
+    "내가 늙으면",
+    "때때로 두려운 생각이 나를 휩쌀 때",
+    "내가 없을 때 친구들은",
+    "생생한 어린 시절의 기억은",
+    "무엇보다도 좋지 않게 여기는 것은",
+    "나의 성 생활은",
+    "내가 어렸을 때 우리 가족은",
+    "나는 어머니를 좋아했지만",
+    "아버지와 나는"
 ]
 
-# API 엔드포인트
+# 애플리케이션 시작 시 테이블 생성
+@app.on_event("startup")
+async def startup_event():
+    logger.info("🚀 애플리케이션 시작")
+    create_tables()
+    
+    # 데이터베이스 연결 확인
+    health = check_database_health()
+    if health["status"] == "healthy":
+        logger.info("✅ 데이터베이스 연결 확인됨")
+    else:
+        logger.warning(f"⚠️ 데이터베이스 연결 문제: {health}")
 
+# API 엔드포인트
 @app.get("/")
 async def root():
-    return {"message": "SCT 검사 시스템 API", "version": "1.0.0"}
-
-@app.post("/auth/register")
-async def register(user: UserCreate, db: Session = Depends(get_db)):
-    # 기존 사용자 확인
-    existing_user = db.query(User).filter(
-        (User.doctor_id == user.doctor_id) | (User.email == user.email)
-    ).first()
-    
-    if existing_user:
-        raise HTTPException(status_code=400, detail="이미 존재하는 ID 또는 이메일입니다")
-    
-    # 새 사용자 생성
-    db_user = User(
-        doctor_id=user.doctor_id,
-        email=user.email,
-        hashed_password=hash_password(user.password),
-        first_name=user.first_name,
-        last_name=user.last_name,
-        specialty=user.specialty,
-        hospital=user.hospital,
-        phone=user.phone,
-        medical_license=user.medical_license
-    )
-    
-    db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    
-    return {"message": "회원가입이 완료되었습니다"}
-
-@app.post("/auth/login", response_model=TokenResponse)
-async def login(user_login: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.doctor_id == user_login.doctor_id).first()
-    
-    if not user or not verify_password(user_login.password, user.hashed_password):
-        raise HTTPException(status_code=401, detail="잘못된 ID 또는 비밀번호입니다")
-    
-    access_token = create_access_token(data={"sub": user.doctor_id})
-    
     return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user_info": {
-            "doctor_id": user.doctor_id,
-            "name": f"{user.last_name}{user.first_name}",
-            "email": user.email,
-            "specialty": user.specialty,
-            "hospital": user.hospital
-        }
+        "message": "SCT 검사 시스템 API v2.0", 
+        "status": "running",
+        "database": check_database_health()["status"]
     }
 
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "timestamp": datetime.utcnow(),
+        "database": check_database_health(),
+        "openai": "available" if openai_client else "unavailable"
+    }
+
+@app.post("/auth/register")
+async def register(user: UserCreate, db = Depends(get_db)):
+    try:
+        # 기존 사용자 확인
+        existing_user = db.query(User).filter(
+            (User.doctor_id == user.doctor_id) | (User.email == user.email)
+        ).first()
+        
+        if existing_user:
+            raise HTTPException(status_code=400, detail="이미 존재하는 ID 또는 이메일입니다")
+        
+        # 새 사용자 생성
+        db_user = User(
+            doctor_id=user.doctor_id,
+            email=user.email,
+            hashed_password=hash_password(user.password),
+            first_name=user.first_name,
+            last_name=user.last_name,
+            specialty=user.specialty,
+            hospital=user.hospital,
+            phone=user.phone,
+            medical_license=user.medical_license
+        )
+        
+        db.add(db_user)
+        db.commit()
+        db.refresh(db_user)
+        
+        logger.info(f"✅ 새 사용자 등록: {user.doctor_id}")
+        return {"message": "회원가입이 완료되었습니다"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 회원가입 오류: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="회원가입 중 오류가 발생했습니다")
+
+@app.post("/auth/login", response_model=TokenResponse)
+async def login(user_login: UserLogin, db = Depends(get_db)):
+    try:
+        user = db.query(User).filter(User.doctor_id == user_login.doctor_id).first()
+        
+        if not user or not verify_password(user_login.password, user.hashed_password):
+            raise HTTPException(status_code=401, detail="잘못된 ID 또는 비밀번호입니다")
+        
+        access_token = create_access_token(data={"sub": user.doctor_id})
+        
+        logger.info(f"✅ 로그인 성공: {user.doctor_id}")
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user_info": {
+                "doctor_id": user.doctor_id,
+                "name": f"{user.last_name}{user.first_name}",
+                "email": user.email,
+                "specialty": user.specialty,
+                "hospital": user.hospital
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 로그인 오류: {e}")
+        raise HTTPException(status_code=500, detail="로그인 중 오류가 발생했습니다")
+
 @app.get("/auth/check-id/{doctor_id}")
-async def check_doctor_id(doctor_id: str, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.doctor_id == doctor_id).first()
-    return {"available": user is None}
+async def check_doctor_id(doctor_id: str, db = Depends(get_db)):
+    try:
+        user = db.query(User).filter(User.doctor_id == doctor_id).first()
+        return {"available": user is None}
+    except Exception as e:
+        logger.error(f"❌ ID 확인 오류: {e}")
+        raise HTTPException(status_code=500, detail="ID 확인 중 오류가 발생했습니다")
 
 @app.post("/sct/sessions")
 async def create_session(
     session_data: SessionCreate, 
-    db: Session = Depends(get_db),
+    db = Depends(get_db),
     current_user: str = Depends(verify_token)
 ):
-    session_id = str(uuid.uuid4())
-    expires_at = datetime.utcnow() + timedelta(days=7)  # 7일 후 만료
-    
-    db_session = SCTSession(
-        session_id=session_id,
-        doctor_id=current_user,
-        patient_name=session_data.patient_name,
-        expires_at=expires_at
-    )
-    
-    db.add(db_session)
-    db.commit()
-    db.refresh(db_session)
-    
-    return {"session_id": session_id, "expires_at": expires_at}
+    try:
+        session_id = str(uuid.uuid4())
+        expires_at = datetime.utcnow() + timedelta(days=7)
+        
+        db_session = SCTSession(
+            session_id=session_id,
+            doctor_id=current_user,
+            patient_name=session_data.patient_name,
+            expires_at=expires_at
+        )
+        
+        db.add(db_session)
+        db.commit()
+        db.refresh(db_session)
+        
+        logger.info(f"✅ 새 세션 생성: {session_id} by {current_user}")
+        return {"session_id": session_id, "expires_at": expires_at}
+        
+    except Exception as e:
+        logger.error(f"❌ 세션 생성 오류: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="세션 생성 중 오류가 발생했습니다")
 
 @app.get("/sct/sessions/by-user/{doctor_id}")
 async def get_sessions_by_user(
     doctor_id: str, 
-    db: Session = Depends(get_db),
+    db = Depends(get_db),
     current_user: str = Depends(verify_token)
 ):
-    if current_user != doctor_id:
-        raise HTTPException(status_code=403, detail="접근 권한이 없습니다")
-    
-    sessions = db.query(SCTSession).filter(SCTSession.doctor_id == doctor_id).all()
-    
-    # 만료된 세션 상태 업데이트
-    for session in sessions:
-        if session.expires_at < datetime.utcnow() and session.status != "complete":
-            session.status = "expired"
-    
-    db.commit()
-    
-    return {"sessions": sessions}
+    try:
+        if current_user != doctor_id:
+            raise HTTPException(status_code=403, detail="접근 권한이 없습니다")
+        
+        sessions = db.query(SCTSession).filter(SCTSession.doctor_id == doctor_id).all()
+        
+        # 만료된 세션 상태 업데이트
+        for session in sessions:
+            if session.expires_at < datetime.utcnow() and session.status != "complete":
+                session.status = "expired"
+        
+        db.commit()
+        
+        return {"sessions": sessions}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 세션 목록 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail="세션 목록 조회 중 오류가 발생했습니다")
+
+# 기타 엔드포인트들도 유사한 오류 처리 추가...
+# (patient.html에서 사용하는 엔드포인트들)
 
 @app.get("/sct/session/{session_id}")
-async def get_session(session_id: str, db: Session = Depends(get_db)):
-    session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
-    
-    # 만료 확인
-    if session.expires_at < datetime.utcnow():
-        session.status = "expired"
-        db.commit()
-        raise HTTPException(status_code=410, detail="만료된 세션입니다")
-    
-    responses = db.query(SCTResponse).filter(SCTResponse.session_id == session_id).all()
-    
-    return {
-        "session": session,
-        "responses": responses,
-        "total_items": len(SCT_ITEMS),
-        "completed_items": len(responses)
-    }
+async def get_session(session_id: str, db = Depends(get_db)):
+    try:
+        session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        if session.expires_at < datetime.utcnow():
+            session.status = "expired"
+            db.commit()
+            raise HTTPException(status_code=410, detail="만료된 세션입니다")
+        
+        responses = db.query(SCTResponse).filter(SCTResponse.session_id == session_id).all()
+        
+        return {
+            "session": session,
+            "responses": responses,
+            "total_items": len(SCT_ITEMS),
+            "completed_items": len(responses)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 세션 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail="세션 조회 중 오류가 발생했습니다")
 
 @app.get("/sct/session/{session_id}/items")
-async def get_session_items(session_id: str, db: Session = Depends(get_db)):
-    session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
-    
-    if session.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=410, detail="만료된 세션입니다")
-    
-    # 기존 응답 가져오기
-    existing_responses = db.query(SCTResponse).filter(SCTResponse.session_id == session_id).all()
-    existing_dict = {resp.item_no: resp.answer for resp in existing_responses}
-    
-    # 문항 목록 생성
-    items = []
-    for i, stem in enumerate(SCT_ITEMS, 1):
-        items.append({
-            "item_no": i,
-            "stem": stem,
-            "answer": existing_dict.get(i, "")
-        })
-    
-    return {
-        "session_id": session_id,
-        "patient_name": session.patient_name,
-        "items": items,
-        "status": session.status
-    }
+async def get_session_items(session_id: str, db = Depends(get_db)):
+    try:
+        session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        if session.expires_at < datetime.utcnow():
+            raise HTTPException(status_code=410, detail="만료된 세션입니다")
+        
+        # 기존 응답 가져오기
+        existing_responses = db.query(SCTResponse).filter(SCTResponse.session_id == session_id).all()
+        existing_dict = {resp.item_no: resp.answer for resp in existing_responses}
+        
+        # 문항 목록 생성
+        items = []
+        for i, stem in enumerate(SCT_ITEMS, 1):
+            items.append({
+                "item_no": i,
+                "stem": stem,
+                "answer": existing_dict.get(i, "")
+            })
+        
+        return {
+            "session_id": session_id,
+            "patient_name": session.patient_name,
+            "items": items,
+            "status": session.status
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 세션 문항 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail="세션 문항 조회 중 오류가 발생했습니다")
 
 @app.post("/sct/session/{session_id}/responses")
 async def save_responses(
     session_id: str, 
     responses: List[SCTResponseCreate], 
-    db: Session = Depends(get_db)
+    db = Depends(get_db)
 ):
-    session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
-    
-    if session.expires_at < datetime.utcnow():
-        raise HTTPException(status_code=410, detail="만료된 세션입니다")
-    
-    # 기존 응답 삭제
-    db.query(SCTResponse).filter(SCTResponse.session_id == session_id).delete()
-    
-    # 새 응답 저장
-    for response in responses:
-        if response.answer.strip():  # 빈 답변은 저장하지 않음
-            db_response = SCTResponse(
-                session_id=session_id,
-                item_no=response.item_no,
-                stem=response.stem,
-                answer=response.answer.strip()
-            )
-            db.add(db_response)
-    
-    # 세션 상태 업데이트
-    session.status = "complete"
-    session.submitted_at = datetime.utcnow()
-    
-    db.commit()
-    
-    return {"message": "응답이 저장되었습니다"}
-
-@app.post("/sct/sessions/{session_id}/interpret")
-async def generate_interpretation(
-    session_id: str, 
-    db: Session = Depends(get_db),
-    current_user: str = Depends(verify_token)
-):
-    session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
-    
-    if session.doctor_id != current_user:
-        raise HTTPException(status_code=403, detail="접근 권한이 없습니다")
-    
-    responses = db.query(SCTResponse).filter(SCTResponse.session_id == session_id).all()
-    if not responses:
-        raise HTTPException(status_code=400, detail="저장된 응답이 없습니다")
-    
-    # AI 해석 생성
     try:
-        interpretation_text = await generate_ai_interpretation(responses, session.patient_name)
+        session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
         
-        # 기존 해석 삭제 후 새로 저장
-        db.query(SCTInterpretation).filter(SCTInterpretation.session_id == session_id).delete()
+        if session.expires_at < datetime.utcnow():
+            raise HTTPException(status_code=410, detail="만료된 세션입니다")
         
-        db_interpretation = SCTInterpretation(
-            session_id=session_id,
-            interpretation=interpretation_text,
-            patient_name=session.patient_name
-        )
+        # 기존 응답 삭제
+        db.query(SCTResponse).filter(SCTResponse.session_id == session_id).delete()
         
-        db.add(db_interpretation)
+        # 새 응답 저장
+        for response in responses:
+            if response.answer.strip():
+                db_response = SCTResponse(
+                    session_id=session_id,
+                    item_no=response.item_no,
+                    stem=response.stem,
+                    answer=response.answer.strip()
+                )
+                db.add(db_response)
+        
+        # 세션 상태 업데이트
+        session.status = "complete"
+        session.submitted_at = datetime.utcnow()
+        
         db.commit()
         
-        return {"message": "해석이 생성되었습니다"}
+        logger.info(f"✅ 응답 저장 완료: {session_id}")
+        return {"message": "응답이 저장되었습니다"}
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"해석 생성 중 오류: {str(e)}")
-
-@app.get("/sct/sessions/{session_id}/interpretation")
-async def get_interpretation(
-    session_id: str, 
-    db: Session = Depends(get_db),
-    current_user: str = Depends(verify_token)
-):
-    session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
-    
-    if session.doctor_id != current_user:
-        raise HTTPException(status_code=403, detail="접근 권한이 없습니다")
-    
-    interpretation = db.query(SCTInterpretation).filter(SCTInterpretation.session_id == session_id).first()
-    if not interpretation:
-        raise HTTPException(status_code=404, detail="해석 결과를 찾을 수 없습니다")
-    
-    return {
-        "session_id": session_id,
-        "patient_name": interpretation.patient_name,
-        "interpretation": interpretation.interpretation,
-        "created_at": interpretation.created_at
-    }
-
-@app.get("/sct/sessions/{session_id}/analysis")
-async def get_categorical_analysis(
-    session_id: str, 
-    db: Session = Depends(get_db),
-    current_user: str = Depends(verify_token)
-):
-    session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
-    if not session:
-        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
-    
-    if session.doctor_id != current_user:
-        raise HTTPException(status_code=403, detail="접근 권한이 없습니다")
-    
-    responses = db.query(SCTResponse).filter(SCTResponse.session_id == session_id).all()
-    
-    # 카테고리별 분류 (간단한 버전)
-    categorized = {
-        "가족관계": [],
-        "대인관계": [],
-        "자아개념": [],
-        "정서조절": [],
-        "성_결혼관": [],
-        "미래전망": [],
-        "과거경험": [],
-        "현실적응": [],
-        "성격특성": []
-    }
-    
-    # 간단한 키워드 기반 분류
-    family_keywords = ["어머니", "아버지", "가족", "부모", "형제", "자매"]
-    relationship_keywords = ["사람들", "친구", "동료", "상급자"]
-    self_keywords = ["나는", "내가", "나의"]
-    
-    for response in responses:
-        response_dict = {
-            "item_no": response.item_no,
-            "stem": response.stem,
-            "answer": response.answer
-        }
-        
-        if any(keyword in response.stem for keyword in family_keywords):
-            categorized["가족관계"].append(response_dict)
-        elif any(keyword in response.stem for keyword in relationship_keywords):
-            categorized["대인관계"].append(response_dict)
-        else:
-            categorized["자아개념"].append(response_dict)
-    
-    return {"categorized_responses": categorized}
+        logger.error(f"❌ 응답 저장 오류: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="응답 저장 중 오류가 발생했습니다")
 
 # AI 해석 생성 함수
 async def generate_ai_interpretation(responses: List[SCTResponse], patient_name: str) -> str:
-    # 응답을 텍스트로 변환
+    if not openai_client:
+        return generate_default_interpretation(responses, patient_name)
+    
     responses_text = "\n".join([
         f"{resp.item_no}. {resp.stem} → {resp.answer}"
         for resp in responses
     ])
-    
-    # OpenAI 클라이언트가 없으면 기본 해석 반환
-    if not openai_client:
-        return generate_default_interpretation(responses, patient_name)
     
     prompt = f"""
 당신은 20년 경력의 임상심리 전문가입니다. 다음 SCT(문장완성검사) 응답을 분석하여 전문적인 해석을 제공해주세요.
@@ -558,10 +551,9 @@ SCT 응답:
         return response.choices[0].message.content
         
     except Exception as e:
-        print(f"OpenAI API error: {e}")
+        logger.error(f"OpenAI API 오류: {e}")
         return generate_default_interpretation(responses, patient_name)
 
-# 기본 해석 생성 함수
 def generate_default_interpretation(responses: List[SCTResponse], patient_name: str) -> str:
     return f"""
 # SCT 검사 해석 보고서

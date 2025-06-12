@@ -867,7 +867,22 @@
                 const row = document.createElement('tr');
                 
                 // 안전한 데이터 추출
-                const patientName = session.patient_name || session.patientName || 'Unknown';
+                let patientName = 'UNKNOWN';
+                console.log('🔍 세션 데이터 분석:', session);
+                console.log('🔍 patient_name 직접 접근:', session.patient_name);
+                console.log('🔍 patient_name 타입:', typeof session.patient_name);
+                console.log('🔍 patient_name 길이:', session.patient_name ? session.patient_name.length : 'null/undefined');
+
+                if (session.patient_name && session.patient_name.trim() !== '') {
+                    patientName = session.patient_name.trim();
+                    console.log('✅ patient_name 정상:', patientName);
+                } else if (session.patientName && session.patientName.trim() !== '') {
+                    patientName = session.patientName.trim();
+                    console.log('✅ patientName(camelCase) 사용:', patientName);
+                } else {
+                    console.warn('❌ 환자 이름을 찾을 수 없음, 세션 전체:', session);
+                    patientName = 'NO_NAME_FOUND';
+}
                 const sessionId = session.session_id || session.sessionId || 'Unknown';
                 const status = session.status || 'unknown';
                 

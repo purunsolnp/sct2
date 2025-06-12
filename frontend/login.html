@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCT 시스템 로그인</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .login-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 80px rgba(0,0,0,0.2);
+            padding: 50px;
+            width: 100%;
+            max-width: 450px;
+            text-align: center;
+        }
+        
+        .logo {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        
+        .login-title {
+            font-size: 2em;
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .login-subtitle {
+            color: #718096;
+            margin-bottom: 40px;
+            font-size: 1.1em;
+        }
+        
+        .form-group {
+            margin-bottom: 25px;
+            text-align: left;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 0.95em;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 1em;
+            transition: all 0.3s ease;
+            background: #f7fafc;
+        }
+        
+        .form-input:focus {
+            border-color: #4299e1;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+            background: white;
+        }
+        
+        .password-container {
+            position: relative;
+        }
+        
+        .password-toggle {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #718096;
+            cursor: pointer;
+            font-size: 1.2em;
+        }
+        
+        .login-button {
+            width: 100%;
+            background: linear-gradient(135deg, #4299e1, #667eea);
+            color: white;
+            border: none;
+            padding: 18px;
+            border-radius: 12px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        
+        .login-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(66, 153, 225, 0.4);
+        }
+        
+        .login-button:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .forgot-password {
+            color: #4299e1;
+            text-decoration: none;
+            font-size: 0.9em;
+            transition: color 0.3s ease;
+        }
+        
+        .forgot-password:hover {
+            color: #2b6cb0;
+            text-decoration: underline;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .alert-error {
+            background: #fed7d7;
+            color: #c53030;
+            border: 1px solid #feb2b2;
+        }
+        
+        .alert-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+        
+        .demo-accounts {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f7fafc;
+            border-radius: 12px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .demo-title {
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #4a5568;
+            margin-bottom: 15px;
+        }
+        
+        .demo-account {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 8px;
+            background: white;
+            border-radius: 8px;
+            border: 1px solid #e2e8f0;
+        }
+        
+        .demo-info {
+            text-align: left;
+        }
+        
+        .demo-name {
+            font-weight: 600;
+            color: #2d3748;
+            font-size: 0.9em;
+        }
+        
+        .demo-id {
+            color: #718096;
+            font-size: 0.8em;
+        }
+        
+        .demo-use-btn {
+            background: #4299e1;
+            color: white;
+            border: none;
+            padding: 6px 12px;
+            border-radius: 6px;
+            font-size: 0.8em;
+            cursor: pointer;
+            transition: background 0.3s ease;
+        }
+        
+        .demo-use-btn:hover {
+            background: #3182ce;
+        }
+        
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4299e1;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">🏥</div>
+        <h1 class="login-title">SCT 관리 시스템</h1>
+        <p class="login-subtitle">문장완성검사 전문 플랫폼</p>
+        
+        <div id="login-alert" class="alert alert-error" style="display: none;">
+            <span id="alert-message"></span>
+        </div>
+        
+        <form id="login-form">
+            <div class="form-group">
+                <label for="doctor-id">의사 ID</label>
+                <input type="text" id="doctor-id" class="form-input" placeholder="의사 ID를 입력하세요" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="password">비밀번호</label>
+                <div class="password-container">
+                    <input type="password" id="password" class="form-input" placeholder="비밀번호를 입력하세요" required>
+                    <button type="button" class="password-toggle" onclick="togglePassword()">👁️</button>
+                </div>
+            </div>
+            
+            <button type="submit" class="login-button" id="login-btn">
+                로그인
+            </button>
+        </form>
+        
+        <a href="#" class="forgot-password">비밀번호를 잊으셨나요?</a>
+        
+        <div style="margin: 20px 0; text-align: center;">
+            <span style="color: #718096;">계정이 없으신가요?</span>
+            <a href="signup.html" style="color: #4299e1; text-decoration: none; font-weight: 600; margin-left: 5px;">회원가입하기</a>
+        </div>
+        
+        <!-- 데모 계정 -->
+        <div class="demo-accounts">
+            <div class="demo-title">🧪 데모 계정 (개발용)</div>
+            
+            <div class="demo-account">
+                <div class="demo-info">
+                    <div class="demo-name">👨‍⚕️ 김의사</div>
+                    <div class="demo-id">ID: doctor1</div>
+                </div>
+                <button class="demo-use-btn" onclick="useDemoAccount('doctor1', 'password123')">사용</button>
+            </div>
+            
+            <div class="demo-account">
+                <div class="demo-info">
+                    <div class="demo-name">👩‍⚕️ 이의사</div>
+                    <div class="demo-id">ID: doctor2</div>
+                </div>
+                <button class="demo-use-btn" onclick="useDemoAccount('doctor2', 'password123')">사용</button>
+            </div>
+            
+            <div class="demo-account">
+                <div class="demo-info">
+                    <div class="demo-name">🏥 관리자</div>
+                    <div class="demo-id">ID: admin</div>
+                </div>
+                <button class="demo-use-btn" onclick="useDemoAccount('admin', 'admin123')">사용</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = window.location.hostname === 'localhost' 
+            ? 'http://localhost:8000' 
+            : 'https://your-backend-api.render.com'; // 실제 백엔드 URL로 변경
+        
+        // 페이지 로드 시 실행
+        document.addEventListener('DOMContentLoaded', function() {
+            // 이미 로그인되어 있으면 대시보드로 리다이렉트
+            const currentUser = localStorage.getItem('currentUser');
+            if (currentUser) {
+                window.location.href = 'doctor.html';
+                return;
+            }
+            
+            // 폼 제출 이벤트
+            document.getElementById('login-form').addEventListener('submit', handleLogin);
+        });
+        
+        // 로그인 처리
+        async function handleLogin(event) {
+            event.preventDefault();
+            
+            const doctorId = document.getElementById('doctor-id').value.trim();
+            const password = document.getElementById('password').value;
+            
+            if (!doctorId || !password) {
+                showAlert('ID와 비밀번호를 모두 입력해주세요.', 'error');
+                return;
+            }
+            
+            const loginBtn = document.getElementById('login-btn');
+            const originalText = loginBtn.innerHTML;
+            
+            // 로딩 상태
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<div class="loading-spinner"></div>로그인 중...';
+            
+            try {
+                // 실제 API 호출 (현재는 데모용 로직)
+                const isValidLogin = await validateLogin(doctorId, password);
+                
+                if (isValidLogin) {
+                    // 로그인 성공
+                    const userData = {
+                        doctorId: doctorId,
+                        name: getDoctorName(doctorId),
+                        loginTime: new Date().toISOString()
+                    };
+                    
+                    localStorage.setItem('currentUser', JSON.stringify(userData));
+                    
+                    showAlert('로그인 성공! 대시보드로 이동합니다...', 'success');
+                    
+                    setTimeout(() => {
+                        window.location.href = 'doctor.html';
+                    }, 1500);
+                    
+                } else {
+                    showAlert('잘못된 ID 또는 비밀번호입니다.', 'error');
+                }
+                
+            } catch (error) {
+                console.error('Login error:', error);
+                showAlert('로그인 중 오류가 발생했습니다. 다시 시도해주세요.', 'error');
+            } finally {
+                // 로딩 상태 해제
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = originalText;
+            }
+        }
+        
+        // 로그인 검증 (실제 API 호출)
+        async function validateLogin(doctorId, password) {
+            try {
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        doctor_id: doctorId,
+                        password: password
+                    })
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    // 토큰과 사용자 정보 저장
+                    localStorage.setItem('access_token', data.access_token);
+                    localStorage.setItem('currentUser', JSON.stringify({
+                        doctorId: data.user_info.doctor_id,
+                        name: data.user_info.name,
+                        email: data.user_info.email,
+                        specialty: data.user_info.specialty,
+                        hospital: data.user_info.hospital,
+                        loginTime: new Date().toISOString()
+                    }));
+                    return true;
+                } else {
+                    const errorData = await response.json();
+                    console.error('Login failed:', errorData);
+                    return false;
+                }
+            } catch (error) {
+                console.error('Network error:', error);
+                return false;
+            }
+        }
+
+        // 의사 이름 가져오기 (현재 사용자 정보에서)
+        function getDoctorName(doctorId) {
+            const currentUser = localStorage.getItem('currentUser');
+            if (currentUser) {
+                const userData = JSON.parse(currentUser);
+                return userData.name;
+            }
+            return doctorId;
+        }'password123',
+                'doctor2': 'password123',
+                'admin': 'admin123',
+                'doctor123': 'password' // 기존 테스트 계정
+            };
+            
+            return validAccounts[doctorId] === password;
+        }
+        
+        // 의사 이름 가져오기
+        function getDoctorName(doctorId) {
+            const names = {
+                'doctor1': '김의사',
+                'doctor2': '이의사',
+                'admin': '관리자',
+                'doctor123': '테스트의사'
+            };
+            return names[doctorId] || doctorId;
+        }
+        
+        // 데모 계정 사용
+        function useDemoAccount(doctorId, password) {
+            document.getElementById('doctor-id').value = doctorId;
+            document.getElementById('password').value = password;
+            
+            // 자동 로그인
+            setTimeout(() => {
+                document.getElementById('login-form').dispatchEvent(new Event('submit'));
+            }, 500);
+        }
+        
+        // 비밀번호 표시/숨김 토글
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const toggleBtn = document.querySelector('.password-toggle');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleBtn.textContent = '🙈';
+            } else {
+                passwordInput.type = 'password';
+                toggleBtn.textContent = '👁️';
+            }
+        }
+        
+        // 알림 메시지 표시
+        function showAlert(message, type) {
+            const alertDiv = document.getElementById('login-alert');
+            const messageSpan = document.getElementById('alert-message');
+            
+            messageSpan.textContent = message;
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.style.display = 'block';
+            
+            // 3초 후 자동 숨김
+            setTimeout(() => {
+                alertDiv.style.display = 'none';
+            }, 3000);
+        }
+    </script>
+</body>
+</html>

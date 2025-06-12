@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCT 자동 해석 시스템</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 50px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.2);
+            text-align: center;
+            animation: slideUp 0.8s ease-out;
+        }
+        
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        .logo {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+        
+        .title {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: #2d3748;
+            margin-bottom: 15px;
+        }
+        
+        .subtitle {
+            font-size: 1.2em;
+            color: #718096;
+            margin-bottom: 40px;
+            line-height: 1.5;
+        }
+        
+        .button-group {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .button {
+            background: linear-gradient(135deg, #4299e1, #667eea);
+            color: white;
+            border: none;
+            padding: 18px 30px;
+            border-radius: 50px;
+            font-size: 1.2em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+        }
+        
+        .button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 15px 35px rgba(66, 153, 225, 0.4);
+        }
+        
+        .button-secondary {
+            background: linear-gradient(135deg, #805ad5, #b794f6);
+        }
+        
+        .button-secondary:hover {
+            box-shadow: 0 15px 35px rgba(128, 90, 213, 0.4);
+        }
+        
+        .features {
+            margin-top: 40px;
+            text-align: left;
+        }
+        
+        .features h3 {
+            color: #4a5568;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .feature-list {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .feature-list li {
+            padding: 10px 0;
+            display: flex;
+            align-items: center;
+            color: #2d3748;
+        }
+        
+        .feature-list li:before {
+            content: "✅";
+            margin-right: 15px;
+            font-size: 1.2em;
+        }
+        
+        .api-info {
+            background: #f7fafc;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 30px;
+            border-left: 4px solid #4299e1;
+        }
+        
+        .api-info h4 {
+            color: #2b6cb0;
+            margin-bottom: 10px;
+        }
+        
+        .api-info code {
+            background: #e2e8f0;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            color: #2d3748;
+        }
+        
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            color: #718096;
+            font-size: 0.9em;
+        }
+        
+        @media (max-width: 768px) {
+            .card {
+                padding: 30px 25px;
+            }
+            
+            .title {
+                font-size: 2em;
+            }
+            
+            .subtitle {
+                font-size: 1.1em;
+            }
+            
+            .button {
+                padding: 15px 25px;
+                font-size: 1.1em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="logo">🧠</div>
+            <h1 class="title">SCT 자동 해석 시스템</h1>
+            <p class="subtitle">
+                문장완성검사(Sentence Completion Test)를 디지털화하고<br>
+                AI를 활용한 자동 해석 서비스를 제공합니다
+            </p>
+            
+            <div class="button-group">
+                <a href="doctor.html" class="button">👨‍⚕️ 의사용 관리 시스템</a>
+                <a href="#" onclick="showPatientInfo()" class="button button-secondary">👤 환자용 검사 참여</a>
+            </div>
+            
+            <div class="features">
+                <h3>🌟 주요 기능</h3>
+                <ul class="feature-list">
+                    <li>웹 기반 SCT 검사 실시</li>
+                    <li>OpenAI GPT 기반 자동 해석</li>
+                    <li>72시간 세션 관리</li>
+                    <li>14개 카테고리별 분석</li>
+                    <li>실시간 검사 진행 상황 추적</li>
+                    <li>전문적인 임상 보고서 생성</li>
+                </ul>
+            </div>
+            
+            <div class="api-info">
+                <h4>🔗 API 정보</h4>
+                <p>백엔드 API 서버: <code>http://localhost:8000</code></p>
+                <p>API 문서: <code>http://localhost:8000/docs</code></p>
+                <p>헬스 체크: <code>http://localhost:8000/health</code></p>
+            </div>
+            
+            <div class="footer">
+                <p>© 2024 SCT 자동 해석 시스템. 임상 심리학 전문 도구</p>
+                <p>Made with ❤️ for better mental health care</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function showPatientInfo() {
+            alert(`👤 환자용 검사 안내
+            
+환자분들은 담당 의사로부터 받은 개별 검사 링크를 통해 접속하실 수 있습니다.
+
+검사 링크 형식:
+https://yoursite.com/patient.html?session=세션ID
+
+담당 의사에게 검사 링크를 요청해주세요.`);
+        }
+        
+        // 페이지 로드 시 API 상태 확인
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                const response = await fetch('http://localhost:8000/health');
+                if (response.ok) {
+                    console.log('✅ API 서버가 정상적으로 작동 중입니다.');
+                } else {
+                    console.warn('⚠️ API 서버 응답에 문제가 있습니다.');
+                }
+            } catch (error) {
+                console.error('❌ API 서버에 연결할 수 없습니다. 서버가 실행 중인지 확인해주세요.');
+            }
+        });
+    </script>
+</body>
+</html>

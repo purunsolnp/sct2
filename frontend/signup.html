@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCT 시스템 회원가입</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .signup-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 80px rgba(0,0,0,0.2);
+            padding: 40px;
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+        }
+        
+        .logo {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        
+        .signup-title {
+            font-size: 2em;
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .signup-subtitle {
+            color: #718096;
+            margin-bottom: 30px;
+            font-size: 1em;
+        }
+        
+        .form-row {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+            text-align: left;
+            flex: 1;
+        }
+        
+        .form-group.full-width {
+            width: 100%;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: #4a5568;
+            font-size: 0.9em;
+        }
+        
+        .required {
+            color: #e53e3e;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 0.95em;
+            transition: all 0.3s ease;
+            background: #f7fafc;
+        }
+        
+        .form-input:focus {
+            border-color: #4299e1;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+            background: white;
+        }
+        
+        .form-select {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 10px;
+            font-size: 0.95em;
+            transition: all 0.3s ease;
+            background: #f7fafc;
+            cursor: pointer;
+        }
+        
+        .form-select:focus {
+            border-color: #4299e1;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+            background: white;
+        }
+        
+        .password-container {
+            position: relative;
+        }
+        
+        .password-toggle {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #718096;
+            cursor: pointer;
+            font-size: 1.1em;
+        }
+        
+        .password-strength {
+            margin-top: 8px;
+            font-size: 0.8em;
+        }
+        
+        .strength-weak {
+            color: #e53e3e;
+        }
+        
+        .strength-medium {
+            color: #dd6b20;
+        }
+        
+        .strength-strong {
+            color: #38a169;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        
+        .checkbox-group input[type="checkbox"] {
+            margin-top: 4px;
+        }
+        
+        .checkbox-group label {
+            font-size: 0.9em;
+            line-height: 1.4;
+        }
+        
+        .terms-link {
+            color: #4299e1;
+            text-decoration: none;
+        }
+        
+        .terms-link:hover {
+            text-decoration: underline;
+        }
+        
+        .signup-button {
+            width: 100%;
+            background: linear-gradient(135deg, #4299e1, #667eea);
+            color: white;
+            border: none;
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 1.1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        
+        .signup-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 30px rgba(66, 153, 225, 0.4);
+        }
+        
+        .signup-button:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .login-link {
+            color: #4299e1;
+            text-decoration: none;
+            font-size: 0.95em;
+            transition: color 0.3s ease;
+        }
+        
+        .login-link:hover {
+            color: #2b6cb0;
+            text-decoration: underline;
+        }
+        
+        .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        .alert-error {
+            background: #fed7d7;
+            color: #c53030;
+            border: 1px solid #feb2b2;
+        }
+        
+        .alert-success {
+            background: #c6f6d5;
+            color: #22543d;
+            border: 1px solid #9ae6b4;
+        }
+        
+        .loading-spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #4299e1;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .help-text {
+            font-size: 0.8em;
+            color: #718096;
+            margin-top: 5px;
+        }
+        
+        .id-check-container {
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+        
+        .id-check-btn {
+            background: #4299e1;
+            color: white;
+            border: none;
+            padding: 12px 15px;
+            border-radius: 8px;
+            font-size: 0.85em;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.3s ease;
+        }
+        
+        .id-check-btn:hover {
+            background: #3182ce;
+        }
+        
+        .id-check-btn:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+        }
+        
+        .check-result {
+            margin-top: 5px;
+            font-size: 0.8em;
+        }
+        
+        .check-success {
+            color: #38a169;
+        }
+        
+        .check-error {
+            color: #e53e3e;
+        }
+    </style>
+</head>
+<body>
+    <div class="signup-container">
+        <div class="logo">🏥</div>
+        <h1 class="signup-title">회원가입</h1>
+        <p class="signup-subtitle">SCT 검사 시스템에 오신 것을 환영합니다</p>
+        
+        <div id="signup-alert" class="alert alert-error" style="display: none;">
+            <span id="alert-message"></span>
+        </div>
+        
+        <form id="signup-form">
+            <!-- 기본 정보 -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="last-name">성 <span class="required">*</span></label>
+                    <input type="text" id="last-name" class="form-input" placeholder="김" required>
+                </div>
+                <div class="form-group">
+                    <label for="first-name">이름 <span class="required">*</span></label>
+                    <input type="text" id="first-name" class="form-input" placeholder="의사" required>
+                </div>
+            </div>
+            
+            <!-- 의사 ID -->
+            <div class="form-group full-width">
+                <label for="doctor-id">의사 ID <span class="required">*</span></label>
+                <div class="id-check-container">
+                    <input type="text" id="doctor-id" class="form-input" placeholder="doctor001" required 
+                           pattern="[a-zA-Z0-9_]{4,20}" title="4-20자의 영문, 숫자, 언더스코어만 사용 가능">
+                    <button type="button" class="id-check-btn" onclick="checkDoctorId()">중복확인</button>
+                </div>
+                <div class="help-text">4-20자의 영문, 숫자, 언더스코어(_)만 사용 가능</div>
+                <div id="id-check-result" class="check-result"></div>
+            </div>
+            
+            <!-- 전문분야 및 소속 -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="specialty">전문분야 <span class="required">*</span></label>
+                    <select id="specialty" class="form-select" required>
+                        <option value="">선택하세요</option>
+                        <option value="psychiatry">정신건강의학과</option>
+                        <option value="psychology">임상심리학</option>
+                        <option value="neurology">신경과</option>
+                        <option value="pediatrics">소아청소년과</option>
+                        <option value="family">가정의학과</option>
+                        <option value="other">기타</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="hospital">소속기관 <span class="required">*</span></label>
+                    <input type="text" id="hospital" class="form-input" placeholder="○○병원" required>
+                </div>
+            </div>
+            
+            <!-- 연락처 -->
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="email">이메일 <span class="required">*</span></label>
+                    <input type="email" id="email" class="form-input" placeholder="doctor@hospital.com" required>
+                </div>
+                <div class="form-group">
+                    <label for="phone">연락처</label>
+                    <input type="tel" id="phone" class="form-input" placeholder="010-1234-5678">
+                </div>
+            </div>
+            
+            <!-- 비밀번호 -->
+            <div class="form-group full-width">
+                <label for="password">비밀번호 <span class="required">*</span></label>
+                <div class="password-container">
+                    <input type="password" id="password" class="form-input" placeholder="8자 이상 입력하세요" 
+                           required minlength="8" onkeyup="checkPasswordStrength()">
+                    <button type="button" class="password-toggle" onclick="togglePassword('password')">👁️</button>
+                </div>
+                <div id="password-strength" class="password-strength"></div>
+            </div>
+            
+            <!-- 비밀번호 확인 -->
+            <div class="form-group full-width">
+                <label for="password-confirm">비밀번호 확인 <span class="required">*</span></label>
+                <div class="password-container">
+                    <input type="password" id="password-confirm" class="form-input" placeholder="비밀번호를 다시 입력하세요" 
+                           required onkeyup="checkPasswordMatch()">
+                    <button type="button" class="password-toggle" onclick="togglePassword('password-confirm')">👁️</button>
+                </div>
+                <div id="password-match" class="password-strength"></div>
+            </div>
+            
+            <!-- 의료진 인증번호 -->
+            <div class="form-group full-width">
+                <label for="medical-license">의료진 인증번호</label>
+                <input type="text" id="medical-license" class="form-input" placeholder="의사면허번호 (선택사항)">
+                <div class="help-text">의료진 인증을 위해 입력해주세요 (나중에 입력 가능)</div>
+            </div>
+            
+            <!-- 이용약관 동의 -->
+            <div class="checkbox-group">
+                <input type="checkbox" id="terms-agree" required>
+                <label for="terms-agree">
+                    <a href="#" class="terms-link">이용약관</a> 및 
+                    <a href="#" class="terms-link">개인정보처리방침</a>에 동의합니다 <span class="required">*</span>
+                </label>
+            </div>
+            
+            <div class="checkbox-group">
+                <input type="checkbox" id="marketing-agree">
+                <label for="marketing-agree">
+                    마케팅 정보 수신에 동의합니다 (선택)
+                </label>
+            </div>
+            
+            <button type="submit" class="signup-button" id="signup-btn">
+                회원가입
+            </button>
+        </form>
+        
+        <p>이미 계정이 있으신가요? <a href="login.html" class="login-link">로그인하기</a></p>
+    </div>
+
+    <script>
+        const API_BASE = window.location.hostname === 'localhost' 
+            ? 'http://localhost:8000' 
+            : 'https://your-backend-api.render.com'; // 실제 백엔드 URL로 변경
+        let isIdChecked = false;
+        let isIdAvailable = false;
+        
+        // 페이지 로드 시 실행
+        document.addEventListener('DOMContentLoaded', function() {
+            // 이미 로그인되어 있으면 대시보드로 리다이렉트
+            const currentUser = localStorage.getItem('currentUser');
+            if (currentUser) {
+                window.location.href = 'doctor.html';
+                return;
+            }
+            
+            // 폼 제출 이벤트
+            document.getElementById('signup-form').addEventListener('submit', handleSignup);
+            
+            // ID 입력 시 중복확인 상태 리셋
+            document.getElementById('doctor-id').addEventListener('input', function() {
+                isIdChecked = false;
+                isIdAvailable = false;
+                document.getElementById('id-check-result').innerHTML = '';
+            });
+        });
+        
+        // 회원가입 처리
+        async function handleSignup(event) {
+            event.preventDefault();
+            
+            if (!validateForm()) {
+                return;
+            }
+            
+            const formData = getFormData();
+            const signupBtn = document.getElementById('signup-btn');
+            const originalText = signupBtn.innerHTML;
+            
+            // 로딩 상태
+            signupBtn.disabled = true;
+            signupBtn.innerHTML = '<div class="loading-spinner"></div>회원가입 중...';
+            
+            try {
+                // 실제 API 호출 (현재는 데모용 로직)
+                const result = await registerUser(formData);
+                
+                if (result.success) {
+                    showAlert('회원가입이 완료되었습니다! 로그인 페이지로 이동합니다...', 'success');
+                    
+                    setTimeout(() => {
+                        window.location.href = 'login.html';
+                    }, 2000);
+                    
+                } else {
+                    showAlert(result.message || '회원가입 중 오류가 발생했습니다.', 'error');
+                }
+                
+            } catch (error) {
+                console.error('Signup error:', error);
+                showAlert('회원가입 중 오류가 발생했습니다. 다시 시도해주세요.', 'error');
+            } finally {
+                // 로딩 상태 해제
+                signupBtn.disabled = false;
+                signupBtn.innerHTML = originalText;
+            }
+        }
+        
+        // 폼 데이터 수집
+        function getFormData() {
+            return {
+                lastName: document.getElementById('last-name').value.trim(),
+                firstName: document.getElementById('first-name').value.trim(),
+                doctorId: document.getElementById('doctor-id').value.trim(),
+                specialty: document.getElementById('specialty').value,
+                hospital: document.getElementById('hospital').value.trim(),
+                email: document.getElementById('email').value.trim(),
+                phone: document.getElementById('phone').value.trim(),
+                password: document.getElementById('password').value,
+                medicalLicense: document.getElementById('medical-license').value.trim(),
+                termsAgree: document.getElementById('terms-agree').checked,
+                marketingAgree: document.getElementById('marketing-agree').checked
+            };
+        }
+        
+        // 폼 유효성 검사
+        function validateForm() {
+            const formData = getFormData();
+            
+            // 필수 필드 체크
+            if (!formData.lastName || !formData.firstName) {
+                showAlert('이름을 입력해주세요.', 'error');
+                return false;
+            }
+            
+            if (!formData.doctorId) {
+                showAlert('의사 ID를 입력해주세요.', 'error');
+                return false;
+            }
+            
+            if (!isIdChecked || !isIdAvailable) {
+                showAlert('의사 ID 중복확인을 해주세요.', 'error');
+                return false;
+            }
+            
+            if (!formData.specialty) {
+                showAlert('전문분야를 선택해주세요.', 'error');
+                return false;
+            }
+            
+            if (!formData.hospital) {
+                showAlert('소속기관을 입력해주세요.', 'error');
+                return false;
+            }
+            
+            if (!formData.email) {
+                showAlert('이메일을 입력해주세요.', 'error');
+                return false;
+            }
+            
+            if (!formData.password || formData.password.length < 8) {
+                showAlert('비밀번호는 8자 이상이어야 합니다.', 'error');
+                return false;
+            }
+            
+            const passwordConfirm = document.getElementById('password-confirm').value;
+            if (formData.password !== passwordConfirm) {
+                showAlert('비밀번호가 일치하지 않습니다.', 'error');
+                return false;
+            }
+            
+            if (!formData.termsAgree) {
+                showAlert('이용약관에 동의해주세요.', 'error');
+                return false;
+            }
+            
+            return true;
+        }
+        
+        // 사용자 등록 (실제 API 호출)
+        async function registerUser(formData) {
+            try {
+                const response = await fetch(`${API_BASE}/auth/register`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        doctor_id: formData.doctorId,
+                        email: formData.email,
+                        password: formData.password,
+                        first_name: formData.firstName,
+                        last_name: formData.lastName,
+                        specialty: formData.specialty,
+                        hospital: formData.hospital,
+                        phone: formData.phone,
+                        medical_license: formData.medicalLicense
+                    })
+                });
+
+                if (response.ok) {
+                    return { success: true };
+                } else {
+                    const errorData = await response.json();
+                    return { success: false, message: errorData.detail };
+                }
+            } catch (error) {
+                console.error('Registration error:', error);
+                return { success: false, message: '네트워크 오류가 발생했습니다.' };
+            }
+        }
+        
+        // ID 중복 확인 (실제 API 호출)
+        async function checkDoctorId() {
+            const doctorId = document.getElementById('doctor-id').value.trim();
+            const resultDiv = document.getElementById('id-check-result');
+            const checkBtn = document.querySelector('.id-check-btn');
+            
+            if (!doctorId) {
+                showAlert('의사 ID를 입력해주세요.', 'error');
+                return;
+            }
+            
+            if (!/^[a-zA-Z0-9_]{4,20}$/.test(doctorId)) {
+                showAlert('ID는 4-20자의 영문, 숫자, 언더스코어(_)만 사용 가능합니다.', 'error');
+                return;
+            }
+            
+            checkBtn.disabled = true;
+            checkBtn.textContent = '확인중...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/auth/check-id/${doctorId}`);
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    if (data.available) {
+                        resultDiv.innerHTML = '<span class="check-success">✅ 사용 가능한 ID입니다</span>';
+                        isIdChecked = true;
+                        isIdAvailable = true;
+                    } else {
+                        resultDiv.innerHTML = '<span class="check-error">❌ 이미 사용중인 ID입니다</span>';
+                        isIdChecked = true;
+                        isIdAvailable = false;
+                    }
+                } else {
+                    resultDiv.innerHTML = '<span class="check-error">❌ 확인 중 오류가 발생했습니다</span>';
+                }
+                
+            } catch (error) {
+                console.error('ID check error:', error);
+                resultDiv.innerHTML = '<span class="check-error">❌ 네트워크 오류가 발생했습니다</span>';
+            } finally {
+                checkBtn.disabled = false;
+                checkBtn.textContent = '중복확인';
+            }
+        }
+        
+        // 비밀번호 강도 체크
+        function checkPasswordStrength() {
+            const password = document.getElementById('password').value;
+            const strengthDiv = document.getElementById('password-strength');
+            
+            if (password.length === 0) {
+                strengthDiv.innerHTML = '';
+                return;
+            }
+            
+            let strength = 0;
+            if (password.length >= 8) strength++;
+            if (/[a-z]/.test(password)) strength++;
+            if (/[A-Z]/.test(password)) strength++;
+            if (/[0-9]/.test(password)) strength++;
+            if (/[^A-Za-z0-9]/.test(password)) strength++;
+            
+            if (strength < 3) {
+                strengthDiv.innerHTML = '<span class="strength-weak">⚪ 약함</span>';
+            } else if (strength < 4) {
+                strengthDiv.innerHTML = '<span class="strength-medium">🟡 보통</span>';
+            } else {
+                strengthDiv.innerHTML = '<span class="strength-strong">🟢 강함</span>';
+            }
+        }
+        
+        // 비밀번호 일치 확인
+        function checkPasswordMatch() {
+            const password = document.getElementById('password').value;
+            const passwordConfirm = document.getElementById('password-confirm').value;
+            const matchDiv = document.getElementById('password-match');
+            
+            if (passwordConfirm.length === 0) {
+                matchDiv.innerHTML = '';
+                return;
+            }
+            
+            if (password === passwordConfirm) {
+                matchDiv.innerHTML = '<span class="check-success">✅ 비밀번호가 일치합니다</span>';
+            } else {
+                matchDiv.innerHTML = '<span class="check-error">❌ 비밀번호가 일치하지 않습니다</span>';
+            }
+        }
+        
+        // 비밀번호 표시/숨김 토글
+        function togglePassword(inputId) {
+            const passwordInput = document.getElementById(inputId);
+            const toggleBtn = passwordInput.nextElementSibling;
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleBtn.textContent = '🙈';
+            } else {
+                passwordInput.type = 'password';
+                toggleBtn.textContent = '👁️';
+            }
+        }
+        
+        // 알림 메시지 표시
+        function showAlert(message, type) {
+            const alertDiv = document.getElementById('signup-alert');
+            const messageSpan = document.getElementById('alert-message');
+            
+            messageSpan.textContent = message;
+            alertDiv.className = `alert alert-${type}`;
+            alertDiv.style.display = 'block';
+            
+            // 스크롤을 상단으로
+            alertDiv.scrollIntoView({ behavior: 'smooth' });
+            
+            // 5초 후 자동 숨김 (성공 메시지는 제외)
+            if (type !== 'success') {
+                setTimeout(() => {
+                    alertDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+    </script>
+</body>
+</html>

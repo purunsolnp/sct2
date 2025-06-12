@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCT 문장완성검사</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 20px 80px rgba(0,0,0,0.2);
+            margin-bottom: 20px;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .logo {
+            font-size: 3em;
+            margin-bottom: 10px;
+        }
+        
+        .title {
+            font-size: 2.2em;
+            color: #2d3748;
+            margin-bottom: 10px;
+            font-weight: 700;
+        }
+        
+        .subtitle {
+            color: #718096;
+            font-size: 1.1em;
+            margin-bottom: 20px;
+        }
+        
+        .patient-info {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 12px;
+            border-left: 4px solid #4299e1;
+            margin-bottom: 30px;
+        }
+        
+        .progress-container {
+            margin-bottom: 30px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 12px;
+            background: #e2e8f0;
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4299e1, #667eea);
+            border-radius: 6px;
+            transition: width 0.3s ease;
+            width: 0%;
+        }
+        
+        .progress-text {
+            text-align: center;
+            color: #4a5568;
+            font-weight: 600;
+        }
+        
+        .question-container {
+            margin-bottom: 30px;
+        }
+        
+        .question-number {
+            color: #4299e1;
+            font-weight: 700;
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+        
+        .question-text {
+            font-size: 1.3em;
+            margin-bottom: 20px;
+            color: #2d3748;
+            font-weight: 500;
+        }
+        
+        .answer-input {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid #e2e8f0;
+            border-radius: 12px;
+            font-size: 1.1em;
+            transition: all 0.3s ease;
+            resize: vertical;
+            min-height: 80px;
+        }
+        
+        .answer-input:focus {
+            border-color: #4299e1;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(66, 153, 225, 0.1);
+        }
+        
+        .navigation {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 30px;
+        }
+        
+        .nav-button {
+            background: linear-gradient(135deg, #4299e1, #667eea);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 10px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+        
+        .nav-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(66, 153, 225, 0.3);
+        }
+        
+        .nav-button:disabled {
+            background: #cbd5e0;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+        
+        .nav-button.secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+            border: 2px solid #cbd5e0;
+        }
+        
+        .nav-button.secondary:hover {
+            background: #cbd5e0;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .completion-card {
+            text-align: center;
+            display: none;
+        }
+        
+        .completion-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+        
+        .completion-title {
+            font-size: 2em;
+            color: #38a169;
+            margin-bottom: 15px;
+            font-weight: 700;
+        }
+        
+        .completion-message {
+            color: #4a5568;
+            font-size: 1.1em;
+            line-height: 1.6;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px 20px;
+            color: #718096;
+        }
+        
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4299e1;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .error-card {
+            background: #fed7d7;
+            border: 1px solid #feb2b2;
+            color: #c53030;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+            display: none;
+        }
+        
+        .error-icon {
+            font-size: 3em;
+            margin-bottom: 15px;
+        }
+        
+        .auto-save {
+            color: #38a169;
+            font-size: 0.9em;
+            margin-top: 10px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        
+        .auto-save.show {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- 로딩 화면 -->
+        <div id="loading-screen" class="card">
+            <div class="loading">
+                <div class="loading-spinner"></div>
+                <p>검사를 준비하고 있습니다...</p>
+            </div>
+        </div>
+        
+        <!-- 오류 화면 -->
+        <div id="error-screen" class="card error-card">
+            <div class="error-icon">❌</div>
+            <h2>검사를 불러올 수 없습니다</h2>
+            <p id="error-message">세션이 만료되었거나 잘못된 링크입니다.</p>
+            <button onclick="window.location.reload()" class="nav-button" style="margin-top: 20px;">
+                다시 시도
+            </button>
+        </div>
+        
+        <!-- 메인 검사 화면 -->
+        <div id="main-screen" class="card" style="display: none;">
+            <div class="header">
+                <div class="logo">📝</div>
+                <h1 class="title">SCT 문장완성검사</h1>
+                <p class="subtitle">각 문장을 자연스럽게 완성해주세요</p>
+            </div>
+            
+            <div class="patient-info">
+                <h3 style="margin-bottom: 10px; color: #2d3748;">환자 정보</h3>
+                <p><strong>이름:</strong> <span id="patient-name">로딩중...</span></p>
+                <p><strong>검사 ID:</strong> <span id="session-id">로딩중...</span></p>
+            </div>
+            
+            <div class="progress-container">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill"></div>
+                </div>
+                <div class="progress-text" id="progress-text">0 / 60 완료</div>
+            </div>
+            
+            <div class="question-container">
+                <div class="question-number" id="question-number">문항 1</div>
+                <div class="question-text" id="question-text">나는 항상 ____________________</div>
+                <textarea 
+                    class="answer-input" 
+                    id="answer-input" 
+                    placeholder="자연스럽게 문장을 완성해주세요..."
+                    oninput="autoSave()"
+                ></textarea>
+                <div class="auto-save" id="auto-save-indicator">✅ 자동 저장됨</div>
+            </div>
+            
+            <div class="navigation">
+                <button class="nav-button secondary" id="prev-btn" onclick="previousQuestion()" disabled>
+                    ← 이전
+                </button>
+                <div>
+                    <button class="nav-button secondary" onclick="saveAndExit()" style="margin-right: 10px;">
+                        나중에 계속하기
+                    </button>
+                    <button class="nav-button" id="next-btn" onclick="nextQuestion()">
+                        다음 →
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 완료 화면 -->
+        <div id="completion-screen" class="card completion-card">
+            <div class="completion-icon">🎉</div>
+            <h2 class="completion-title">검사 완료!</h2>
+            <div class="completion-message">
+                <p>SCT 문장완성검사를 모두 완료하셨습니다.</p>
+                <p>담당 의사에게 결과가 전달되었습니다.</p>
+                <p><strong>검사에 참여해 주셔서 감사합니다.</strong></p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        const API_BASE = window.location.hostname === 'localhost' 
+            ? 'http://localhost:8000' 
+            : 'https://your-backend-api.render.com'; // 실제 백엔드 URL로 변경
+            
+        let sessionId = '';
+        let patientName = '';
+        let questions = [];
+        let answers = [];
+        let currentQuestion = 0;
+        let autoSaveTimeout = null;
+        
+        // 페이지 로드 시 실행
+        document.addEventListener('DOMContentLoaded', function() {
+            // URL에서 세션 ID 추출
+            const urlParams = new URLSearchParams(window.location.search);
+            sessionId = urlParams.get('session');
+            
+            if (!sessionId) {
+                showError('세션 ID가 없습니다. 올바른 링크를 사용해주세요.');
+                return;
+            }
+            
+            loadSession();
+        });
+        
+        // 세션 정보 로드
+        async function loadSession() {
+            try {
+                const response = await fetch(`${API_BASE}/sct/session/${sessionId}/items`);
+                
+                if (!response.ok) {
+                    if (response.status === 404) {
+                        throw new Error('존재하지 않는 검사입니다.');
+                    } else if (response.status === 410) {
+                        throw new Error('만료된 검사입니다.');
+                    }
+                    throw new Error('검사를 불러올 수 없습니다.');
+                }
+                
+                const data = await response.json();
+                
+                sessionId = data.session_id;
+                patientName = data.patient_name;
+                questions = data.items;
+                
+                // 기존 답변 복원
+                answers = new Array(questions.length);
+                questions.forEach((item, index) => {
+                    answers[index] = item.answer || '';
+                });
+                
+                // UI 초기화
+                document.getElementById('patient-name').textContent = patientName;
+                document.getElementById('session-id').textContent = sessionId;
+                
+                // 완료된 검사인지 확인
+                if (data.status === 'complete') {
+                    showCompletion();
+                    return;
+                }
+                
+                // 마지막으로 작업하던 문항으로 이동
+                currentQuestion = findLastAnsweredQuestion();
+                
+                showMainScreen();
+                updateQuestion();
+                updateProgress();
+                
+            } catch (error) {
+                console.error('Load session error:', error);
+                showError(error.message);
+            }
+        }
+        
+        // 마지막으로 답변한 문항 찾기
+        function findLastAnsweredQuestion() {
+            for (let i = answers.length - 1; i >= 0; i--) {
+                if (answers[i] && answers[i].trim()) {
+                    return Math.min(i + 1, answers.length - 1); // 다음 문항으로
+                }
+            }
+            return 0; // 처음 문항
+        }
+        
+        // 화면 전환 함수들
+        function showError(message) {
+            document.getElementById('error-message').textContent = message;
+            document.getElementById('loading-screen').style.display = 'none';
+            document.getElementById('error-screen').style.display = 'block';
+        }
+        
+        function showMainScreen() {
+            document.getElementById('loading-screen').style.display = 'none';
+            document.getElementById('main-screen').style.display = 'block';
+        }
+        
+        function showCompletion() {
+            document.getElementById('loading-screen').style.display = 'none';
+            document.getElementById('completion-screen').style.display = 'block';
+        }
+        
+        // 문항 업데이트
+        function updateQuestion() {
+            if (currentQuestion >= questions.length) {
+                return;
+            }
+            
+            const question = questions[currentQuestion];
+            
+            document.getElementById('question-number').textContent = `문항 ${currentQuestion + 1}`;
+            document.getElementById('question-text').textContent = question.stem + ' ____________________';
+            document.getElementById('answer-input').value = answers[currentQuestion] || '';
+            
+            // 버튼 상태 업데이트
+            document.getElementById('prev-btn').disabled = currentQuestion === 0;
+            
+            const nextBtn = document.getElementById('next-btn');
+            if (currentQuestion === questions.length - 1) {
+                nextBtn.textContent = '완료';
+                nextBtn.onclick = completeTest;
+            } else {
+                nextBtn.textContent = '다음 →';
+                nextBtn.onclick = nextQuestion;
+            }
+            
+            // 포커스
+            document.getElementById('answer-input').focus();
+        }
+        
+        // 진행률 업데이트
+        function updateProgress() {
+            const completed = answers.filter(answer => answer && answer.trim()).length;
+            const percentage = (completed / questions.length) * 100;
+            
+            document.getElementById('progress-fill').style.width = percentage + '%';
+            document.getElementById('progress-text').textContent = `${completed} / ${questions.length} 완료`;
+        }
+        
+        // 이전 문항
+        function previousQuestion() {
+            if (currentQuestion > 0) {
+                saveCurrentAnswer();
+                currentQuestion--;
+                updateQuestion();
+                updateProgress();
+            }
+        }
+        
+        // 다음 문항
+        function nextQuestion() {
+            saveCurrentAnswer();
+            
+            if (currentQuestion < questions.length - 1) {
+                currentQuestion++;
+                updateQuestion();
+                updateProgress();
+            }
+        }
+        
+        // 현재 답변 저장
+        function saveCurrentAnswer() {
+            const answer = document.getElementById('answer-input').value;
+            answers[currentQuestion] = answer;
+        }
+        
+        // 자동 저장
+        function autoSave() {
+            saveCurrentAnswer();
+            updateProgress();
+            
+            // 기존 타이머 취소
+            if (autoSaveTimeout) {
+                clearTimeout(autoSaveTimeout);
+            }
+            
+            // 2초 후 서버에 저장
+            autoSaveTimeout = setTimeout(async () => {
+                await saveToServer();
+                showAutoSaveIndicator();
+            }, 2000);
+        }
+        
+        // 서버에 저장
+        async function saveToServer() {
+            try {
+                const responses = [];
+                
+                for (let i = 0; i < questions.length; i++) {
+                    if (answers[i] && answers[i].trim()) {
+                        responses.push({
+                            item_no: questions[i].item_no,
+                            stem: questions[i].stem,
+                            answer: answers[i].trim()
+                        });
+                    }
+                }
+                
+                const response = await fetch(`${API_BASE}/sct/session/${sessionId}/responses`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(responses)
+                });
+                
+                if (!response.ok) {
+                    console.error('Save failed:', await response.text());
+                }
+                
+            } catch (error) {
+                console.error('Auto save error:', error);
+            }
+        }
+        
+        // 자동 저장 표시
+        function showAutoSaveIndicator() {
+            const indicator = document.getElementById('auto-save-indicator');
+            indicator.classList.add('show');
+            
+            setTimeout(() => {
+                indicator.classList.remove('show');
+            }, 2000);
+        }
+        
+        // 나중에 계속하기
+        async function saveAndExit() {
+            saveCurrentAnswer();
+            await saveToServer();
+            
+            alert('진행 상황이 저장되었습니다.\n같은 링크로 다시 접속하여 계속 진행할 수 있습니다.');
+            
+            // 페이지를 닫거나 다른 페이지로 이동
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                window.close();
+            }
+        }
+        
+        // 검사 완료
+        async function completeTest() {
+            saveCurrentAnswer();
+            
+            // 모든 문항에 답변했는지 확인
+            const unanswered = [];
+            for (let i = 0; i < questions.length; i++) {
+                if (!answers[i] || !answers[i].trim()) {
+                    unanswered.push(i + 1);
+                }
+            }
+            
+            if (unanswered.length > 0) {
+                const proceed = confirm(
+                    `다음 문항들이 완성되지 않았습니다: ${unanswered.join(', ')}\n\n` +
+                    '그래도 검사를 완료하시겠습니까?'
+                );
+                
+                if (!proceed) {
+                    return;
+                }
+            }
+            
+            try {
+                // 최종 저장
+                const responses = [];
+                
+                for (let i = 0; i < questions.length; i++) {
+                    if (answers[i] && answers[i].trim()) {
+                        responses.push({
+                            item_no: questions[i].item_no,
+                            stem: questions[i].stem,
+                            answer: answers[i].trim()
+                        });
+                    }
+                }
+                
+                const response = await fetch(`${API_BASE}/sct/session/${sessionId}/responses`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(responses)
+                });
+                
+                if (!response.ok) {
+                    throw new Error('저장에 실패했습니다.');
+                }
+                
+                // 완료 화면 표시
+                document.getElementById('main-screen').style.display = 'none';
+                showCompletion();
+                
+            } catch (error) {
+                alert('검사 완료 중 오류가 발생했습니다: ' + error.message);
+            }
+        }
+        
+        // 페이지 이탈 시 자동 저장
+        window.addEventListener('beforeunload', function() {
+            if (answers.some(answer => answer && answer.trim())) {
+                saveCurrentAnswer();
+                // 동기적으로 저장 시도 (제한적)
+                navigator.sendBeacon(`${API_BASE}/sct/session/${sessionId}/responses`, 
+                    JSON.stringify(answers.map((answer, index) => ({
+                        item_no: questions[index]?.item_no || index + 1,
+                        stem: questions[index]?.stem || '',
+                        answer: answer || ''
+                    })).filter(item => item.answer.trim()))
+                );
+            }
+        });
+    </script>
+</body>
+</html>

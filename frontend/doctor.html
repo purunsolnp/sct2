@@ -1601,197 +1601,341 @@
         }
         
         // PDF 해석 보고서 다운로드 (개선된 한글 지원 버전)
+// 가장 안전하고 확실한 방법: 브라우저 인쇄 기능 활용
+
         async function downloadInterpretationPDF() {
-        if (!currentInterpretation) {
-            alert('다운로드할 해석 결과가 없습니다.');
-            return;
-        }
-        
-        const sessionData = allSessions.find(s => s.session_id === currentSessionId);
-        const patientName = sessionData ? (sessionData.patient_name || sessionData.patientName) : '환자';
-        const today = new Date().toISOString().split('T')[0];
-        
-        try {
-            const { jsPDF } = window.jspdf;
-            const pdf = new jsPDF({
-                orientation: 'portrait',
-                unit: 'mm',
-                format: 'a4'
-            });
-            
-            let yPosition = 20;
-            const pageWidth = 190; // A4 너비에서 여백 제외
-            const pageHeight = 270; // A4 높이에서 여백 제외
-            
-            // 🎨 헤더 배경 (그라데이션 효과)
-            pdf.setFillColor(102, 126, 234); // 보라색 배경
-            pdf.rect(0, 0, 210, 50, 'F');
-            
-            // 🏥 메인 제목
-            pdf.setTextColor(255, 255, 255); // 흰색 텍스트
-            pdf.setFontSize(24);
-            pdf.setFont('helvetica', 'bold');
-            pdf.text('SCT 검사 해석 보고서', 105, 25, { align: 'center' });
-            
-            pdf.setFontSize(14);
-            pdf.setFont('helvetica', 'normal');
-            pdf.text('🏥 전문 심리검사 시스템', 105, 35, { align: 'center' });
-            
-            yPosition = 60;
-            
-            // 📋 환자 정보 박스
-            pdf.setFillColor(247, 250, 252); // 연한 회색 배경
-            pdf.rect(15, yPosition - 5, pageWidth - 10, 25, 'F');
-            
-            pdf.setTextColor(45, 55, 72); // 진한 회색
-            pdf.setFontSize(16);
-            pdf.setFont('helvetica', 'bold');
-            pdf.text('📋 환자 정보', 20, yPosition + 5);
-            
-            pdf.setFontSize(12);
-            pdf.setFont('helvetica', 'normal');
-            pdf.setTextColor(74, 85, 104);
-            pdf.text(`환자명: ${patientName}`, 20, yPosition + 15);
-            pdf.text(`해석 생성일: ${new Date().toLocaleString('ko-KR')}`, 110, yPosition + 15);
-            pdf.text(`세션 ID: ${currentSessionId.substring(0, 8)}...`, 20, yPosition + 23);
-            
-            yPosition += 35;
-            
-            // 해석 내용 처리
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = currentInterpretation;
-            const textContent = tempDiv.textContent || tempDiv.innerText || '';
-            
-            // 섹션별로 나누기
-            const sections = textContent.split(/##\s+/);
-            
-            sections.forEach((section, index) => {
-                if (index === 0) return; // 첫 번째 빈 섹션 건너뛰기
-                
-                const lines = section.split('\n').filter(line => line.trim());
-                if (lines.length === 0) return;
-                
-                const title = lines[0].trim();
-                const content = lines.slice(1).join('\n').trim();
-                
-                // 페이지 넘김 확인
-                if (yPosition > pageHeight - 40) {
-                    pdf.addPage();
-                    yPosition = 20;
-                }
-                
-                // 🎯 섹션 제목
-                pdf.setFillColor(66, 153, 225); // 파란색 배경
-                pdf.rect(15, yPosition - 2, pageWidth - 10, 10, 'F');
-                
-                pdf.setTextColor(255, 255, 255); // 흰색 텍스트
-                pdf.setFontSize(14);
-                pdf.setFont('helvetica', 'bold');
-                pdf.text(title, 20, yPosition + 5);
-                
-                yPosition += 15;
-                
-                // 섹션 내용
-                if (content) {
-                    pdf.setTextColor(45, 55, 72); // 진한 회색
-                    pdf.setFontSize(10);
-                    pdf.setFont('helvetica', 'normal');
-                    
-                    const contentLines = pdf.splitTextToSize(content, pageWidth - 20);
-                    
-                    contentLines.forEach(line => {
-                        if (yPosition > pageHeight) {
-                            pdf.addPage();
-                            yPosition = 20;
-                        }
-                        
-                        // 소제목 감지 (###로 시작하는 경우)
-                        if (line.startsWith('###')) {
-                            pdf.setTextColor(102, 126, 234); // 보라색
-                            pdf.setFont('helvetica', 'bold');
-                            pdf.setFontSize(11);
-                            pdf.text(line.replace('###', '🔸'), 20, yPosition);
-                        } else if (line.includes('**') || line.includes('*')) {
-                            // 강조 텍스트
-                            const cleanLine = line.replace(/\*\*/g, '').replace(/\*/g, '');
-                            pdf.setTextColor(45, 55, 72);
-                            pdf.setFont('helvetica', 'bold');
-                            pdf.setFontSize(10);
-                            pdf.text(`• ${cleanLine}`, 25, yPosition);
-                        } else if (line.trim().startsWith('-')) {
-                            // 목록 아이템
-                            pdf.setTextColor(74, 85, 104);
-                            pdf.setFont('helvetica', 'normal');
-                            pdf.setFontSize(9);
-                            pdf.text(`  ${line.trim()}`, 25, yPosition);
-                        } else if (line.trim()) {
-                            // 일반 텍스트
-                            pdf.setTextColor(74, 85, 104);
-                            pdf.setFont('helvetica', 'normal');
-                            pdf.setFontSize(10);
-                            pdf.text(line, 20, yPosition);
-                        }
-                        
-                        yPosition += 5;
-                    });
-                }
-                
-                yPosition += 8; // 섹션 간 간격
-            });
-            
-            // ⚠️ 면책조항 박스
-            if (yPosition > pageHeight - 60) {
-                pdf.addPage();
-                yPosition = 20;
+            if (!currentInterpretation) {
+                alert('다운로드할 해석 결과가 없습니다.');
+                return;
             }
             
-            pdf.setFillColor(248, 249, 250); // 연한 배경
-            pdf.rect(15, yPosition - 5, pageWidth - 10, 50, 'F');
+            // 1차: 브라우저 인쇄 대화상자 안내
+            const userChoice = confirm(
+                '한글이 포함된 PDF를 생성합니다.\n\n' +
+                '가장 안전한 방법:\n' +
+                '• "확인"을 누르면 인쇄 대화상자가 열립니다\n' +
+                '• "대상"에서 "PDF로 저장"을 선택하세요\n' +
+                '• 한글이 깨지지 않는 완벽한 PDF가 생성됩니다\n\n' +
+                '계속하시겠습니까?'
+            );
             
-            // 경고 테두리
-            pdf.setDrawColor(229, 62, 62); // 빨간색
-            pdf.setLineWidth(1);
-            pdf.rect(15, yPosition - 5, pageWidth - 10, 50, 'S');
+            if (!userChoice) {
+                // 사용자가 취소하면 텍스트 다운로드 제안
+                const textChoice = confirm('텍스트 파일로 다운로드하시겠습니까?');
+                if (textChoice) {
+                    downloadInterpretation();
+                }
+                return;
+            }
             
-            pdf.setTextColor(197, 48, 48); // 빨간색 텍스트
-            pdf.setFontSize(12);
-            pdf.setFont('helvetica', 'bold');
-            pdf.text('⚠️ 중요한 면책조항', 20, yPosition + 5);
+            // 인쇄용 페이지 생성 및 열기
+            openPrintPage();
+        }
+
+        function openPrintPage() {
+            const sessionData = allSessions.find(s => s.session_id === currentSessionId);
+            const patientName = sessionData ? (sessionData.patient_name || sessionData.patientName) : '환자';
             
-            pdf.setTextColor(102, 102, 102);
-            pdf.setFontSize(9);
-            pdf.setFont('helvetica', 'normal');
+            // 새 창에서 인쇄 전용 페이지 생성
+            const printWindow = window.open('', '_blank', 'width=800,height=900');
             
-            const disclaimerText = [
-                '• 본 보고서는 AI 기반 자동 해석 시스템에 의해 생성되었습니다.',
-                '• 임상적 판단은 반드시 자격을 갖춘 정신건강 전문의의 검토를 거쳐야 합니다.',
-                '• 본 해석은 참고 자료로만 활용되어야 하며, 단독으로 진단 근거가 될 수 없습니다.',
-                '• 환자의 전체적인 임상 상황과 다른 검사 결과를 종합하여 해석해야 합니다.'
-            ];
+            // HTML을 깔끔한 텍스트로 변환
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = currentInterpretation;
+            const cleanText = tempDiv.textContent || tempDiv.innerText || '';
             
-            disclaimerText.forEach((text, index) => {
-                pdf.text(text, 20, yPosition + 15 + (index * 7));
+            printWindow.document.write(`
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>SCT 해석보고서 - ${patientName}</title>
+            <style>
+                @page {
+                    size: A4;
+                    margin: 2.5cm;
+                }
+                
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+                
+                body {
+                    font-family: '맑은 고딕', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+                    line-height: 1.7;
+                    color: #2d3748;
+                    font-size: 11px;
+                    background: white;
+                }
+                
+                .header {
+                    text-align: center;
+                    border-bottom: 3px solid #4299e1;
+                    padding-bottom: 25px;
+                    margin-bottom: 35px;
+                    background: linear-gradient(135deg, #f7fafc 0%, #ebf8ff 100%);
+                    padding: 30px;
+                    border-radius: 10px;
+                }
+                
+                .header h1 {
+                    font-size: 28px;
+                    color: #2b6cb0;
+                    margin-bottom: 10px;
+                    font-weight: bold;
+                    letter-spacing: 2px;
+                }
+                
+                .header p {
+                    font-size: 16px;
+                    color: #4a5568;
+                    margin: 5px 0;
+                }
+                
+                .patient-info {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin-bottom: 25px;
+                    border-left: 5px solid #4299e1;
+                }
+                
+                .patient-info h3 {
+                    color: #2b6cb0;
+                    margin-bottom: 15px;
+                    font-size: 16px;
+                }
+                
+                .patient-info p {
+                    margin: 8px 0;
+                    font-size: 12px;
+                }
+                
+                .patient-info strong {
+                    color: #2d3748;
+                    font-weight: 600;
+                }
+                
+                .content {
+                    margin-bottom: 30px;
+                }
+                
+                .content h1 {
+                    font-size: 20px;
+                    color: #2d3748;
+                    margin: 25px 0 15px 0;
+                    border-bottom: 2px solid #4299e1;
+                    padding-bottom: 8px;
+                    font-weight: bold;
+                }
+                
+                .content h2 {
+                    font-size: 16px;
+                    color: #4299e1;
+                    margin: 20px 0 10px 0;
+                    background: #f7fafc;
+                    padding: 8px 12px;
+                    border-radius: 5px;
+                    font-weight: 600;
+                }
+                
+                .content h3 {
+                    font-size: 14px;
+                    color: #667eea;
+                    margin: 15px 0 8px 0;
+                    font-weight: 600;
+                }
+                
+                .content p {
+                    margin: 8px 0;
+                    text-align: justify;
+                    line-height: 1.6;
+                }
+                
+                .content strong {
+                    color: #2d3748;
+                    font-weight: 600;
+                }
+                
+                .disclaimer {
+                    background: #fff3cd;
+                    border: 2px solid #ffd700;
+                    padding: 20px;
+                    margin-top: 30px;
+                    border-radius: 8px;
+                    page-break-inside: avoid;
+                }
+                
+                .disclaimer h4 {
+                    color: #c53030;
+                    margin-bottom: 15px;
+                    font-size: 14px;
+                    font-weight: bold;
+                }
+                
+                .disclaimer ul {
+                    margin: 0;
+                    padding-left: 20px;
+                    font-size: 10px;
+                    line-height: 1.5;
+                }
+                
+                .disclaimer li {
+                    margin-bottom: 8px;
+                }
+                
+                .footer {
+                    text-align: center;
+                    margin-top: 40px;
+                    padding-top: 20px;
+                    border-top: 2px solid #e2e8f0;
+                    font-size: 10px;
+                    color: #718096;
+                }
+                
+                .print-instructions {
+                    background: #e6fffa;
+                    border: 2px solid #38b2ac;
+                    padding: 20px;
+                    margin: 20px 0;
+                    border-radius: 8px;
+                    text-align: center;
+                }
+                
+                .print-instructions h3 {
+                    color: #2c7a7b;
+                    margin-bottom: 10px;
+                }
+                
+                .print-instructions p {
+                    margin: 5px 0;
+                    font-size: 12px;
+                }
+                
+                .print-button {
+                    background: #4299e1;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    cursor: pointer;
+                    margin: 10px;
+                    font-weight: 600;
+                }
+                
+                .print-button:hover {
+                    background: #3182ce;
+                }
+                
+                @media print {
+                    .no-print {
+                        display: none !important;
+                    }
+                    
+                    body {
+                        font-size: 10px;
+                    }
+                    
+                    .print-instructions {
+                        display: none;
+                    }
+                }
+                
+                @media screen {
+                    body {
+                        max-width: 800px;
+                        margin: 20px auto;
+                        padding: 20px;
+                        box-shadow: 0 0 20px rgba(0,0,0,0.1);
+                        border-radius: 10px;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="print-instructions no-print">
+                <h3>📄 PDF 저장 방법</h3>
+                <p><strong>1단계:</strong> 아래 "인쇄하기" 버튼을 클릭</p>
+                <p><strong>2단계:</strong> 프린터 대상을 "PDF로 저장" 선택</p>
+                <p><strong>3단계:</strong> "저장" 클릭하여 완벽한 한글 PDF 생성</p>
+                <button class="print-button" onclick="window.print()">🖨️ 인쇄하기 (PDF 저장)</button>
+                <button class="print-button" onclick="window.close()" style="background: #6c757d;">❌ 닫기</button>
+            </div>
+
+            <div class="header">
+                <h1>SCT 검사 해석 보고서</h1>
+                <p>🏥 전문 심리검사 시스템</p>
+                <p>Sentence Completion Test Analysis Report</p>
+            </div>
+            
+            <div class="patient-info">
+                <h3>📋 환자 정보</h3>
+                <p><strong>환자명:</strong> ${patientName}</p>
+                <p><strong>해석 생성일:</strong> ${new Date().toLocaleString('ko-KR')}</p>
+                <p><strong>세션 ID:</strong> ${currentSessionId}</p>
+                <p><strong>검사 유형:</strong> SCT (문장완성검사)</p>
+            </div>
+            
+            <div class="content">
+                ${formatContentForPrint(cleanText)}
+            </div>
+            
+            <div class="disclaimer">
+                <h4>⚠️ 중요한 면책조항</h4>
+                <ul>
+                    <li>본 보고서는 AI 기반 자동 해석 시스템에 의해 생성되었습니다.</li>
+                    <li>임상적 판단은 반드시 자격을 갖춘 정신건강 전문의의 검토를 거쳐 최종 확정되어야 합니다.</li>
+                    <li>본 해석은 참고 자료로만 활용되어야 하며, 단독으로 진단이나 치료 결정의 근거가 될 수 없습니다.</li>
+                    <li>환자의 전체적인 임상 상황과 다른 검사 결과들을 종합하여 해석해야 합니다.</li>
+                    <li>본 시스템은 정신건강의학과 전문의의 임상적 판단을 보조하는 도구입니다.</li>
+                </ul>
+            </div>
+            
+            <div class="footer">
+                <p><strong>Generated by SCT Analysis System</strong></p>
+                <p>© 2024 Professional Mental Health Assessment Platform</p>
+                <p>이 문서는 의료진 전용이며 환자 개인정보보호법에 따라 보호됩니다.</p>
+            </div>
+        </body>
+        </html>
+            `);
+            
+            printWindow.document.close();
+            
+            // 페이지 로딩 후 자동으로 인쇄 대화상자 열기
+            printWindow.onload = function() {
+                setTimeout(() => {
+                    printWindow.focus();
+                }, 500);
+            };
+        }
+
+        // 텍스트 포맷팅 함수
+        function formatContentForPrint(text) {
+            const paragraphs = text.split('\n').filter(p => p.trim());
+            let formattedContent = '';
+            
+            paragraphs.forEach(paragraph => {
+                const trimmed = paragraph.trim();
+                if (trimmed.startsWith('# ')) {
+                    formattedContent += `<h1>${trimmed.substring(2)}</h1>`;
+                } else if (trimmed.startsWith('## ')) {
+                    formattedContent += `<h2>${trimmed.substring(3)}</h2>`;
+                } else if (trimmed.startsWith('### ')) {
+                    formattedContent += `<h3>${trimmed.substring(4)}</h3>`;
+                } else if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+                    formattedContent += `<p><strong>${trimmed.slice(2, -2)}</strong></p>`;
+                } else if (trimmed.length > 0) {
+                    formattedContent += `<p>${trimmed}</p>`;
+                }
             });
             
-            // 📄 푸터
-            yPosition = pageHeight + 10;
-            pdf.setTextColor(113, 128, 150);
-            pdf.setFontSize(8);
-            pdf.setFont('helvetica', 'normal');
-            pdf.text('Generated by SCT Analysis System', 105, yPosition, { align: 'center' });
-            pdf.text('© 2024 Professional Mental Health Assessment Platform', 105, yPosition + 5, { align: 'center' });
-            
-            // PDF 저장
-            pdf.save(`SCT_해석보고서_${patientName}_${today}.pdf`);
-            
-            console.log('✅ 스타일이 적용된 PDF 생성 완료');
-            
-        } catch (error) {
-            console.error('❌ PDF 생성 오류:', error);
-            alert('PDF 생성 중 오류가 발생했습니다. 텍스트 파일로 다운로드합니다.');
-            downloadInterpretation();
+            return formattedContent;
         }
-    }
         
         // 개선된 PDF용 HTML 콘텐츠 생성
         function createImprovedPDFContent(patientName, interpretation) {

@@ -2,6 +2,7 @@
 <html lang="ko">
 <head>
     <!-- ... 기존 head 내용 ... -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
     <!-- 관리자 정보 및 대시보드 통계 -->
@@ -43,7 +44,24 @@
             <button type="submit" class="button button-primary">세션 생성</button>
         </form>
         <!-- 전체 이용자(의사) 카드 리스트 -->
-        <div id="user-list" style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 30px;"></div>
+        <div id="user-list" style="display: none;"></div>
+        <!-- 전체 이용자(의사) 테이블 리스트 -->
+        <div style="margin-bottom:30px;">
+          <table id="user-table" style="width:100%;border-collapse:collapse;background:#f7fafc;box-shadow:0 2px 8px rgba(0,0,0,0.04);border-radius:10px;overflow:hidden;">
+            <thead style="background:#e2e8f0;">
+              <tr>
+                <th style="padding:10px;">이름</th>
+                <th style="padding:10px;">아이디</th>
+                <th style="padding:10px;">이메일</th>
+                <th style="padding:10px;">권한</th>
+                <th style="padding:10px;">상태</th>
+                <th style="padding:10px;">통계</th>
+                <th style="padding:10px;">승인/블락</th>
+              </tr>
+            </thead>
+            <tbody id="user-table-body"></tbody>
+          </table>
+        </div>
         <!-- 이용자별 통계 영역 -->
         <div id="user-detail-stats"></div>
         <!-- 월별 차트(전체) -->
@@ -503,66 +521,22 @@
                 document.getElementById('user-monthly-usage').innerHTML = '';
             }
             users.forEach(user => {
-                const row = document.createElement('tr');
-                
-                const lastActivity = user.last_activity ? 
-                    new Date(user.last_activity).toLocaleDateString('ko-KR') : '-';
-                const createdAt = user.created_at ? 
-                    new Date(user.created_at).toLocaleDateString('ko-KR') : '-';
-                
-                const statusBadge = user.is_verified ? 
-                    '<span class="user-badge verified">인증됨</span>' : 
-                    '<span class="user-badge inactive">미인증</span>';
-                
-                const activeBadge = user.is_active ? 
-                    '<span class="user-badge active">활성</span>' : 
-                    '<span class="user-badge inactive">비활성</span>';
-                
-                // 진행률 계산
-                const total = user.total_sessions || 0;
-                const completed = user.completed_sessions || 0;
-                const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
-                // 진행률 bar
-                const progressBar = `
-                    <div style="width:100px; background:#e2e8f0; border-radius:8px; height:16px; position:relative;">
-                        <div style="width:${percent}%; background:linear-gradient(90deg,#4299e1,#38a169); height:100%; border-radius:8px;"></div>
-                        <div style="position:absolute; left:0; top:0; width:100%; height:100%; text-align:center; color:#222; font-size:0.95em; font-weight:600; line-height:16px;">${percent}%</div>
-                    </div>
-                `;
-                
-                row.innerHTML = `
-                    <td>
-                        <div><strong>${user.name}</strong></div>
-                        <div style="font-size: 0.8em; color: #666;">${user.doctor_id}</div>
-                        <div style="font-size: 0.8em; color: #666;">${user.email}</div>
-                    </td>
-                    <td>
-                        <div>${user.specialty}</div>
-                        <div style="font-size: 0.8em; color: #666;">${user.hospital}</div>
-                    </td>
-                    <td>${user.phone || '-'}</td>
-                    <td>${createdAt}</td>
-                    <td>
-                        <div>${lastActivity}</div>
-                        <div>${activeBadge}</div>
-                    </td>
-                    <td>
-                        <div>총: ${user.total_sessions}건</div>
-                        <div>완료: ${user.completed_sessions}건</div>
-                        <div style="font-size: 0.8em; color: #666;">30일: ${user.recent_30days_sessions}건</div>
-                    </td>
-                    <td>${progressBar}</td>
-                    <td>${statusBadge}</td>
-                    <td>
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="padding:8px 10px;">${user.name}</td>
+                    <td style="padding:8px 10px;">${user.doctor_id}</td>
+                    <td style="padding:8px 10px;">${user.email}</td>
+                    <td style="padding:8px 10px;">${user.is_verified ? '인증' : '미인증'}</td>
+                    <td style="padding:8px 10px;">${user.is_active ? '활성' : '비활성'}</td>
+                    <td style="padding:8px 10px;"><button style="padding:6px 12px;border-radius:6px;background:#4299e1;color:#fff;border:none;cursor:pointer;" onclick="showUserMonthlyUsageCard('${user.doctor_id}','${user.name.replace(/'/g, '\'')}')">통계 보기</button></td>
+                    <td style="padding:8px 10px; text-align:center;">
                         <label class="status-toggle">
-                            <input type="checkbox" ${user.is_verified ? 'checked' : ''} 
-                                   onchange="toggleUserStatus('${user.doctor_id}', this.checked)">
+                            <input type="checkbox" ${user.is_verified ? 'checked' : ''} onchange="toggleUserStatus('${user.doctor_id}', this.checked)">
                             <span class="slider"></span>
                         </label>
                     </td>
                 `;
-                
-                tbody.appendChild(row);
+                tbody.appendChild(tr);
             });
         }
         
@@ -1093,35 +1067,34 @@
             }
         }
 
-        async function loadAllUsersAndRenderCards() {
+        async function loadAllUsersAndRenderTable() {
             try {
                 const response = await fetch(`${API_BASE}/admin/users?limit=1000`, { headers: getApiHeaders() });
                 if (!response.ok) throw new Error('이용자 목록 로드 실패');
                 const data = await response.json();
                 const users = data.users;
-                const userList = document.getElementById('user-list');
-                userList.innerHTML = '';
+                const tbody = document.getElementById('user-table-body');
+                tbody.innerHTML = '';
                 users.forEach(user => {
-                    const card = document.createElement('div');
-                    card.style.background = '#f7fafc';
-                    card.style.borderRadius = '10px';
-                    card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
-                    card.style.padding = '16px 18px';
-                    card.style.minWidth = '220px';
-                    card.style.flex = '1 1 220px';
-                    card.style.margin = '0 8px 8px 0';
-                    card.style.cursor = 'pointer';
-                    card.innerHTML = `
-                        <div style="font-weight:600;color:#2b6cb0;margin-bottom:6px;">${user.name} <span style='color:#888;font-size:0.95em;'>(${user.doctor_id})</span></div>
-                        <div style="font-size:0.95em;color:#666;">${user.email}</div>
-                        <div style="font-size:0.95em;color:#666;">권한: ${user.is_verified ? '인증' : '미인증'} / ${user.is_active ? '활성' : '비활성'}</div>
-                        <button style="margin-top:10px;padding:6px 12px;border-radius:6px;background:#4299e1;color:#fff;border:none;cursor:pointer;" onclick="event.stopPropagation(); showUserMonthlyUsageCard('${user.doctor_id}','${user.name.replace(/'/g, '\'')}')">통계 보기</button>
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `
+                        <td style="padding:8px 10px;">${user.name}</td>
+                        <td style="padding:8px 10px;">${user.doctor_id}</td>
+                        <td style="padding:8px 10px;">${user.email}</td>
+                        <td style="padding:8px 10px;">${user.is_verified ? '인증' : '미인증'}</td>
+                        <td style="padding:8px 10px;">${user.is_active ? '활성' : '비활성'}</td>
+                        <td style="padding:8px 10px;"><button style="padding:6px 12px;border-radius:6px;background:#4299e1;color:#fff;border:none;cursor:pointer;" onclick="showUserMonthlyUsageCard('${user.doctor_id}','${user.name.replace(/'/g, '\'')}')">통계 보기</button></td>
+                        <td style="padding:8px 10px; text-align:center;">
+                            <label class="status-toggle">
+                                <input type="checkbox" ${user.is_verified ? 'checked' : ''} onchange="toggleUserStatus('${user.doctor_id}', this.checked)">
+                                <span class="slider"></span>
+                            </label>
+                        </td>
                     `;
-                    card.onclick = () => showUserMonthlyUsageCard(user.doctor_id, user.name);
-                    userList.appendChild(card);
+                    tbody.appendChild(tr);
                 });
             } catch (e) {
-                document.getElementById('user-list').innerHTML = '<div style="color:#e53e3e;">이용자 목록을 불러올 수 없습니다.</div>';
+                document.getElementById('user-table-body').innerHTML = '<tr><td colspan="6" style="color:#e53e3e;">이용자 목록을 불러올 수 없습니다.</td></tr>';
             }
         }
 
@@ -1136,10 +1109,44 @@
             }
         }
 
-        // 페이지 로드 시 전체 이용자 카드 렌더링
+        // 페이지 로드 시 전체 이용자 테이블 렌더링
         window.addEventListener('DOMContentLoaded', function() {
-            loadAllUsersAndRenderCards();
+            loadAllUsersAndRenderTable();
         });
     </script>
+    <style>
+    .status-toggle {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+    .status-toggle input { display: none; }
+    .status-toggle .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background-color: #ccc;
+      border-radius: 22px;
+      transition: .4s;
+    }
+    .status-toggle input:checked + .slider {
+      background-color: #38a169;
+    }
+    .status-toggle .slider:before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      border-radius: 50%;
+      transition: .4s;
+    }
+    .status-toggle input:checked + .slider:before {
+      transform: translateX(18px);
+    }
+    </style>
 </body>
 </html>

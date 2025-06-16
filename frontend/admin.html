@@ -34,16 +34,19 @@
                 <div class="stat-label">대기중 세션</div>
             </div>
         </div>
-        <!-- 관리자 세션 생성 폼 -->
-        <form id="admin-create-session-form" style="margin-bottom: 24px; display: flex; gap: 10px; align-items: center;">
+        <!-- 관리자 세션 생성 폼(숨김 처리) -->
+        <form id="admin-create-session-form" style="margin-bottom: 24px; display: none; gap: 10px; align-items: center;">
             <input id="admin-patient-name" type="text" placeholder="환자 이름" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #ccc;">
             <select id="admin-doctor-select" style="padding: 6px 10px; border-radius: 6px; border: 1px solid #ccc; min-width: 180px;">
                 <option value="">담당 의사를 선택하세요</option>
-                <!-- JS에서 옵션 자동 추가 -->
             </select>
             <button type="submit" class="button button-primary">세션 생성</button>
         </form>
-        <!-- 월별 차트 -->
+        <!-- 전체 이용자(의사) 카드 리스트 -->
+        <div id="user-list" style="display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 30px;"></div>
+        <!-- 이용자별 통계 영역 -->
+        <div id="user-detail-stats"></div>
+        <!-- 월별 차트(전체) -->
         <div style="background: #fff; border-radius: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.04); padding: 18px; margin-bottom: 24px;">
             <canvas id="monthlyChart" height="300"></canvas>
         </div>
@@ -1089,6 +1092,54 @@
                     '<div style="color: #e53e3e; padding: 15px; background: #fff5f5; border-radius: 8px;">월별 통계 정보를 불러올 수 없습니다.</div>';
             }
         }
+
+        async function loadAllUsersAndRenderCards() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/users?limit=1000`, { headers: getApiHeaders() });
+                if (!response.ok) throw new Error('이용자 목록 로드 실패');
+                const data = await response.json();
+                const users = data.users;
+                const userList = document.getElementById('user-list');
+                userList.innerHTML = '';
+                users.forEach(user => {
+                    const card = document.createElement('div');
+                    card.style.background = '#f7fafc';
+                    card.style.borderRadius = '10px';
+                    card.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+                    card.style.padding = '16px 18px';
+                    card.style.minWidth = '220px';
+                    card.style.flex = '1 1 220px';
+                    card.style.margin = '0 8px 8px 0';
+                    card.style.cursor = 'pointer';
+                    card.innerHTML = `
+                        <div style="font-weight:600;color:#2b6cb0;margin-bottom:6px;">${user.name} <span style='color:#888;font-size:0.95em;'>(${user.doctor_id})</span></div>
+                        <div style="font-size:0.95em;color:#666;">${user.email}</div>
+                        <div style="font-size:0.95em;color:#666;">권한: ${user.is_verified ? '인증' : '미인증'} / ${user.is_active ? '활성' : '비활성'}</div>
+                        <button style="margin-top:10px;padding:6px 12px;border-radius:6px;background:#4299e1;color:#fff;border:none;cursor:pointer;" onclick="event.stopPropagation(); showUserMonthlyUsageCard('${user.doctor_id}','${user.name.replace(/'/g, '\'')}')">통계 보기</button>
+                    `;
+                    card.onclick = () => showUserMonthlyUsageCard(user.doctor_id, user.name);
+                    userList.appendChild(card);
+                });
+            } catch (e) {
+                document.getElementById('user-list').innerHTML = '<div style="color:#e53e3e;">이용자 목록을 불러올 수 없습니다.</div>';
+            }
+        }
+
+        async function showUserMonthlyUsageCard(doctorId, name) {
+            document.getElementById('user-detail-stats').innerHTML = '<div style="padding:20px;">불러오는 중...</div>';
+            await showUserMonthlyUsage(doctorId, name);
+            // showUserMonthlyUsage가 user-monthly-usage에 그리므로, 그걸 user-detail-stats로 옮김
+            const usageDiv = document.getElementById('user-monthly-usage');
+            if (usageDiv) {
+                document.getElementById('user-detail-stats').innerHTML = usageDiv.innerHTML;
+                usageDiv.innerHTML = '';
+            }
+        }
+
+        // 페이지 로드 시 전체 이용자 카드 렌더링
+        window.addEventListener('DOMContentLoaded', function() {
+            loadAllUsersAndRenderCards();
+        });
     </script>
 </body>
 </html>

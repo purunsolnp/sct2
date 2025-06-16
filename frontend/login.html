@@ -364,7 +364,13 @@
                 if (res.ok && data.access_token) {
                     localStorage.setItem('token', data.access_token);
                     localStorage.setItem('doctor_id', doctorId);
-                    window.location.href = '/frontend/patient.html'; // 로그인 성공 시에만 이동
+                    
+                    // 계정 타입에 따라 다른 페이지로 리디렉션
+                    if (doctorId === 'admin') {
+                        window.location.href = 'admin.html';
+                    } else {
+                        window.location.href = 'doctor.html';
+                    }
                 } else if (data.detail) {
                     alert(data.detail); // 서버 에러 메시지
                 } else {

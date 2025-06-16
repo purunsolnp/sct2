@@ -135,6 +135,43 @@
             text-transform: uppercase;
             font-weight: 600;
         }
+        .sessions-table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            margin-top: 20px;
+            font-size: 1.05em;
+            background: #fff;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .sessions-table th, .sessions-table td {
+            padding: 16px 18px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        .sessions-table th {
+            background: #f1f5f9;
+            font-weight: 700;
+            color: #2b4360;
+            font-size: 1.08em;
+        }
+        .sessions-table tr:hover {
+            background: #f7fafc;
+        }
+        .sessions-table tr:last-child td {
+            border-bottom: none;
+        }
+        .action-buttons {
+            gap: 10px;
+        }
+        .action-button {
+            padding: 7px 16px;
+            border-radius: 6px;
+            font-size: 0.97em;
+            font-weight: 500;
+        }
         /* ... (필요한 스타일만 유지) ... */
     </style>
 </head>
@@ -251,7 +288,7 @@
     </div>
     
     <!-- 해석 결과 모달 -->
-    <div id="interpretation-modal" class="modal">
+    <div id="interpretation-modal" class="modal" style="display:none;">
         <div class="modal-content">
             <span class="close" onclick="closeInterpretationModal()">&times;</span>
             <h2>📊 SCT 검사 결과 분석</h2>
@@ -911,13 +948,13 @@
                         <button onclick="window.print()" style="padding:8px 18px; border-radius:6px; background:#4299e1; color:white; border:none; font-weight:600; margin-right:8px;">PDF로 저장/인쇄</button>
                         <button onclick="window.close()" style="padding:8px 18px; border-radius:6px; background:#e53e3e; color:white; border:none; font-weight:600;">닫기</button>
                     </div>
-                    <div style="padding: 30px; font-family: 'Malgun Gothic', 'Noto Sans KR', 'Segoe UI', sans-serif;">
-                        <h2 style="color:#2b6cb0;">📊 SCT 검사 결과 분석</h2>
-                        <div style="margin-bottom: 20px; padding: 15px; background: #ebf8ff; border-radius: 8px; border-left: 4px solid #4299e1;">
-                            <h3 style="margin: 0; color: #2b6cb0;">환자: ${data.patient_name}</h3>
-                            <p style="margin: 5px 0 0 0; color: #2c5282;">해석 생성일: ${createdAt}</p>
+                    <div style="max-width: 800px; margin: 0 auto; background: #f8fafc; border-radius: 14px; box-shadow: 0 2px 12px rgba(66,153,225,0.08); padding: 40px 32px; font-family: 'Malgun Gothic', 'Noto Sans KR', 'Segoe UI', sans-serif;">
+                        <h2 style="color:#2b6cb0; font-size:2em; margin-bottom:18px; border-bottom:2px solid #4299e1; padding-bottom:10px;">�� SCT 검사 결과 분석</h2>
+                        <div style="margin-bottom: 24px; padding: 18px; background: #ebf8ff; border-radius: 8px; border-left: 5px solid #4299e1;">
+                            <h3 style="margin: 0; color: #2b6cb0; font-size:1.2em;">환자: ${data.patient_name}</h3>
+                            <p style="margin: 5px 0 0 0; color: #2c5282; font-size:1em;">해석 생성일: ${createdAt}</p>
                         </div>
-                        <div style="white-space: pre-wrap; line-height: 1.8; font-size: 1em;">${data.interpretation.replace(/\n/g, '<br>')}</div>
+                        <div style="white-space: pre-wrap; line-height: 1.8; font-size: 1.08em; color:#222;">${data.interpretation.replace(/\n/g, '<br>')}</div>
                     </div>
                 `;
             } catch (error) {

@@ -1542,40 +1542,66 @@ async def generate_ai_interpretation(responses: List[SCTResponse], patient_name:
         return generate_default_interpretation(responses, patient_name)
     
     try:
-        # 프롬프트 구성
-        prompt = f"""다음은 {patient_name}님의 문장완성검사(SCT) 응답입니다. 
-각 응답을 분석하여 심리학적 해석을 제공해주세요.
+        # 임상적으로 풍부한 프롬프트 구성 (각 항목 200자 이상)
+        prompt = f"""
+당신은 숙련된 임상심리사입니다. 아래의 SCT(문장완성검사) 응답을 바탕으로 임상 해석 보고서를 작성하세요.
+보고서는 다음과 같은 구조와 임상적 깊이를 반드시 따라야 합니다.
 
-응답:
+1. 검사 개요  
+- 환자명, 검사일, 검사 협조도, 응답의 전반적 특성, 검사에서 드러난 주요 심리적 단서 등을 요약해 주세요.  
+- 이 항목은 반드시 200자 이상으로 작성하세요.
+
+2. 주요 심리적 특성 분석  
+- 2.1 가족관계 및 애착 패턴  
+- 2.2 대인관계 및 사회적 기능  
+- 2.3 자아개념 및 정체성  
+- 2.4 정서조절 및 스트레스 대처  
+- 2.5 성역할 및 이성관계  
+- 2.6 미래전망 및 목표지향성  
+- 2.7 과거경험 및 현실적응  
+각 항목별로 환자의 실제 응답을 구체적으로 인용하며, 임상적으로 해석해 주세요.  
+각 소제목별로 반드시 200자 이상으로 작성하세요.
+
+3. 임상적 평가  
+- 3.1 주요 방어기제 및 성격특성  
+- 3.2 정신병리학적 고려사항  
+환자의 응답에서 드러난 방어기제, 성격특성, 정신병리적 위험 신호를 임상적으로 평가해 주세요.  
+각 소제목별로 반드시 200자 이상으로 작성하세요.
+
+4. 치료적 권고사항  
+- 4.1 우선 개입 영역  
+- 4.2 생활관리 및 지원방안  
+치료적 개입의 우선순위와 실질적인 생활관리, 지원방안을 제시해 주세요.  
+각 소제목별로 반드시 200자 이상으로 작성하세요.
+
+5. 요약 및 예후  
+- 환자의 심리적 특성, 치료 예후, 강점, 재평가 시점 등을 임상적으로 요약해 주세요.  
+이 항목도 반드시 200자 이상으로 작성하세요.
+
+아래는 환자의 실제 응답입니다.
+---
 """
         for response in responses:
             prompt += f"\n{response.item_no}. {response.stem} → {response.answer}"
-        
         prompt += """
+---
+보고서는 반드시 임상적으로 깊이 있게, 실제 임상 보고서처럼 작성하세요. 각 항목별로 소제목을 붙이고, 환자의 실제 응답을 인용해 해석해 주세요. 불필요한 반복이나 단순 요약은 피하고, 임상적 통찰과 치료적 제안을 충분히 포함하세요.
+"""
 
-해석 시 다음 사항을 고려해주세요:
-1. 각 응답의 심리적 의미
-2. 반복되는 주제나 패턴
-3. 감정과 태도의 표현
-4. 대인관계와 자아개념
-5. 스트레스와 적응 수준
-
-전문적이고 객관적인 해석을 제공해주세요."""
-
-        # API 호출
+        # API 호출 (gpt-4o로 고정)
         response = openai_client.chat.completions.create(
-            model="gpt-3.5-turbo",  # 더 저렴한 모델로 변경
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": "당신은 임상심리학 전문가입니다. SCT 응답을 분석하여 전문적이고 객관적인 해석을 제공해주세요."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            max_tokens=2000
+            max_tokens=4000
         )
         
         # 토큰 사용량 기록
         usage = response.usage
-        model = "gpt-3.5-turbo"
+        model = "gpt-4o"
         cost = calculate_gpt_cost(model, usage.prompt_tokens, usage.completion_tokens)
         
         token_usage = GPTTokenUsage(

@@ -7,7 +7,7 @@
             
             <div id="new-session-alert" class="alert alert-success" style="display: none;">
                 <strong>✅ 새 검사가 생성되었습니다!</strong>
-                <div class="link-display" style="display: block;">
+                <div class="link-display">
                     <p><strong>환자에게 전달할 검사 링크:</strong></p>
                     <div class="link-text" id="patient-link"></div>
                     <div style="display: flex; gap: 10px;">
@@ -266,9 +266,24 @@
                 // 성공 메시지 및 링크 표시
                 const patientLink = `${window.location.origin}/patient.html?session=${sessionData.session_id}`;
                 currentSessionLink = patientLink;
-                
-                document.getElementById('patient-link').textContent = patientLink;
-                document.getElementById('new-session-alert').style.display = 'block';
+
+                // 링크 텍스트 설정
+                const linkElement = document.getElementById('patient-link');
+                if (linkElement) {
+                    linkElement.textContent = patientLink;
+                }
+
+                // 알림 표시
+                const alertElement = document.getElementById('new-session-alert');
+                if (alertElement) {
+                    alertElement.style.display = 'block';
+                }
+
+                // 링크 표시 영역도 표시
+                const linkDisplayElement = document.querySelector('.link-display');
+                if (linkDisplayElement) {
+                    linkDisplayElement.style.display = 'block';
+                }
                 
                 // 폼 초기화
                 document.getElementById('patient-name').value = '';
@@ -1667,7 +1682,7 @@ ${textContent}
             border-radius: 8px;
             padding: 15px;
             margin-top: 15px;
-            display: none;
+            display: block;
         }
         
         .link-text {

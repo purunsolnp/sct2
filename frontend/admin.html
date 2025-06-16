@@ -955,11 +955,24 @@
         // 월별 통계 카드 함수 추가
         async function showUserMonthlyUsage(doctorId, name) {
             try {
+                console.log(`📡 API 요청: /admin/usage-stats?doctor_id=${doctorId}&months=12`);
                 const response = await fetch(`${API_BASE}/admin/usage-stats?doctor_id=${doctorId}&months=12`, {
                     headers: getApiHeaders()
                 });
+                console.log('API 응답 상태:', response.status, response.statusText);
                 if (!response.ok) throw new Error('월별 통계 로드 실패');
                 const data = await response.json();
+
+                console.log('📈 월별 통계 원본 데이터:', data.monthly_stats);
+
+                // Ensure data points are numbers and find the maximum
+                const allSessionValues = data.monthly_stats.flatMap(stat => [
+                    Number(stat.total_sessions || 0),
+                    Number(stat.completed_sessions || 0)
+                ]);
+                const maxDataValue = allSessionValues.length > 0 ? Math.max(...allSessionValues) : 0;
+                const maxY = Math.max(maxDataValue + (maxDataValue * 0.1), 10); // Add 10% padding, minimum 10
+
                 // 차트 컨테이너 생성
                 const container = document.createElement('div');
                 container.style.margin = '18px 0 24px 0';
@@ -975,24 +988,20 @@
                 if (window.userMonthlyChart) {
                     window.userMonthlyChart.destroy();
                 }
-                const maxY = Math.max(
-                    ...data.monthly_stats.map(stat => stat.total_sessions || 0),
-                    ...data.monthly_stats.map(stat => stat.completed_sessions || 0),
-                    10 // 최소 10
-                );
+
                 window.userMonthlyChart = new Chart(canvas.getContext('2d'), {
                     type: 'bar',
                     data: {
                         labels: data.monthly_stats.map(stat => stat.month_name),
                         datasets: [{
                             label: '총 검사 수',
-                            data: data.monthly_stats.map(stat => stat.total_sessions || 0),
+                            data: data.monthly_stats.map(stat => Number(stat.total_sessions) || 0),
                             backgroundColor: 'rgba(66, 153, 225, 0.8)',
                             borderColor: 'rgba(66, 153, 225, 1)',
                             borderWidth: 1
                         }, {
                             label: '완료된 검사',
-                            data: data.monthly_stats.map(stat => stat.completed_sessions || 0),
+                            data: data.monthly_stats.map(stat => Number(stat.completed_sessions) || 0),
                             backgroundColor: 'rgba(56, 161, 105, 0.8)',
                             borderColor: 'rgba(56, 161, 105, 1)',
                             borderWidth: 1
@@ -1005,10 +1014,20 @@
                             title: {
                                 display: true,
                                 text: '월별 검사 현황'
+                            },
+                            tooltip: { // Enhanced tooltip for debugging
+                                callbacks: {
+                                    label: function(context) {
+                                        const label = context.dataset.label || '';
+                                        const value = context.raw;
+                                        return `${label}: ${value}건`;
+                                    }
+                                }
                             }
                         },
                         scales: {
                             y: {
+                                min: 0, // Explicitly set min to 0
                                 beginAtZero: true,
                                 suggestedMax: maxY,
                                 title: {
@@ -1083,6 +1102,7 @@
         }
 
         async function showUserMonthlyUsageCard(doctorId, name) {
+            console.log(`✅ 통계 보기 버튼 클릭: ${name} (${doctorId})`);
             document.getElementById('user-detail-stats').innerHTML = '<div style="padding:20px;">불러오는 중...</div>';
             await showUserMonthlyUsage(doctorId, name);
         }

@@ -135,6 +135,145 @@
                 </div>
             </div>
         </div>
+        <!-- GPT 사용량 통계 -->
+        <div class="card">
+            <h2>🤖 GPT 사용량 통계</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-number" id="total-tokens">0</div>
+                    <div class="stat-label">총 토큰</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-number" id="total-cost">$0.00</div>
+                    <div class="stat-label">총 비용</div>
+                </div>
+            </div>
+            
+            <!-- 날짜 필터 -->
+            <div class="filter-controls" style="margin: 20px 0;">
+                <input type="date" id="gpt-start-date" class="form-input">
+                <input type="date" id="gpt-end-date" class="form-input">
+                <button onclick="loadGPTUsage()" class="button">조회</button>
+            </div>
+            
+            <!-- 의사별 사용량 -->
+            <h3>의사별 사용량</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>의사 ID</th>
+                        <th>사용 횟수</th>
+                        <th>총 토큰</th>
+                        <th>총 비용</th>
+                    </tr>
+                </thead>
+                <tbody id="gpt-doctor-stats">
+                </tbody>
+            </table>
+            
+            <!-- 모델별 사용량 -->
+            <h3>모델별 사용량</h3>
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>모델</th>
+                        <th>사용 횟수</th>
+                        <th>총 토큰</th>
+                        <th>총 비용</th>
+                    </tr>
+                </thead>
+                <tbody id="gpt-model-stats">
+                </tbody>
+            </table>
+        </div>
+        <!-- 보안 모니터링 섹션 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">🔒 보안 모니터링</h5>
+            </div>
+            <div class="card-body">
+                <ul class="nav nav-tabs" id="securityTabs" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link active" id="login-attempts-tab" data-bs-toggle="tab" href="#login-attempts" role="tab">
+                            로그인 시도 기록
+                        </a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" id="ip-blocks-tab" data-bs-toggle="tab" href="#ip-blocks" role="tab">
+                            IP 차단 목록
+                        </a>
+                    </li>
+                </ul>
+                
+                <div class="tab-content mt-3" id="securityTabContent">
+                    <!-- 로그인 시도 기록 -->
+                    <div class="tab-pane fade show active" id="login-attempts" role="tabpanel">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>시간</th>
+                                        <th>IP 주소</th>
+                                        <th>의사 ID</th>
+                                        <th>상태</th>
+                                        <th>User Agent</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="loginAttemptsTable">
+                                    <!-- 로그인 시도 기록이 여기에 동적으로 추가됩니다 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- IP 차단 목록 -->
+                    <div class="tab-pane fade" id="ip-blocks" role="tabpanel">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>IP 주소</th>
+                                        <th>시도 횟수</th>
+                                        <th>마지막 시도</th>
+                                        <th>차단 해제 시간</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ipBlocksTable">
+                                    <!-- IP 차단 목록이 여기에 동적으로 추가됩니다 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- 시스템 설정 섹션 -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">⚙️ 시스템 설정</h5>
+            </div>
+            <div class="card-body">
+                <form id="systemSettingsForm">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="maxConcurrentSessions" class="form-label">최대 동시 세션 수</label>
+                                <input type="number" class="form-control" id="maxConcurrentSessions" min="1" max="5">
+                                <div class="form-text">사용자당 허용되는 최대 동시 세션 수 (1-5)</div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="mb-3">
+                                <label for="sessionTimeout" class="form-label">세션 타임아웃 (분)</label>
+                                <input type="number" class="form-control" id="sessionTimeout" min="5" max="120">
+                                <div class="form-text">세션 자동 종료 시간 (5-120분)</div>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">설정 저장</button>
+                </form>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -330,6 +469,21 @@
                 document.getElementById('user-search').addEventListener('input', debounce(searchUsers, 500));
             }
             document.getElementById('log-level-filter').addEventListener('change', refreshLogs);
+            
+            // 오늘 날짜를 기본값으로 설정
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('gpt-start-date').value = today;
+            document.getElementById('gpt-end-date').value = today;
+            
+            // GPT 사용량 로드
+            loadGPTUsage();
+            loadSecurityData();
+            
+            // 1분마다 보안 데이터 갱신
+            setInterval(loadSecurityData, 60000);
+            
+            // 시스템 설정 로드
+            loadSystemSettings();
         });
         
         // 디바운스 함수
@@ -1130,9 +1284,166 @@
             await showUserMonthlyUsage(doctorId, name);
         }
 
-        // 페이지 로드 시 전체 이용자 테이블 렌더링
-        window.addEventListener('DOMContentLoaded', function() {
-            loadAllUsersAndRenderTable();
+        // GPT 사용량 로드
+        async function loadGPTUsage() {
+            try {
+                const startDate = document.getElementById('gpt-start-date').value;
+                const endDate = document.getElementById('gpt-end-date').value;
+                
+                const response = await fetch(`${API_BASE}/admin/gpt-usage?start_date=${startDate}&end_date=${endDate}`, {
+                    headers: {
+                        'Authorization': `Bearer ${getToken()}`
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error('GPT 사용량 조회 실패');
+                }
+                
+                const data = await response.json();
+                
+                // 총계 업데이트
+                document.getElementById('total-tokens').textContent = data.total_usage.total_tokens.toLocaleString();
+                document.getElementById('total-cost').textContent = `$${data.total_usage.total_cost.toFixed(2)}`;
+                
+                // 의사별 통계
+                const doctorStats = document.getElementById('gpt-doctor-stats');
+                doctorStats.innerHTML = data.doctor_stats.map(stat => `
+                    <tr>
+                        <td>${stat.doctor_id}</td>
+                        <td>${stat.usage_count}</td>
+                        <td>${stat.total_tokens.toLocaleString()}</td>
+                        <td>$${stat.total_cost.toFixed(2)}</td>
+                    </tr>
+                `).join('');
+                
+                // 모델별 통계
+                const modelStats = document.getElementById('gpt-model-stats');
+                modelStats.innerHTML = data.model_stats.map(stat => `
+                    <tr>
+                        <td>${stat.model}</td>
+                        <td>${stat.usage_count}</td>
+                        <td>${stat.total_tokens.toLocaleString()}</td>
+                        <td>$${stat.total_cost.toFixed(2)}</td>
+                    </tr>
+                `).join('');
+                
+            } catch (error) {
+                console.error('GPT 사용량 조회 오류:', error);
+                alert('GPT 사용량 조회 중 오류가 발생했습니다.');
+            }
+        }
+
+        // 보안 모니터링 데이터 로드
+        async function loadSecurityData() {
+            try {
+                // 로그인 시도 기록 로드
+                const attemptsResponse = await fetch('/admin/login-attempts', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                if (attemptsResponse.ok) {
+                    const attempts = await attemptsResponse.json();
+                    const attemptsTable = document.getElementById('loginAttemptsTable');
+                    attemptsTable.innerHTML = '';
+                    
+                    attempts.forEach(attempt => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${new Date(attempt.attempt_time).toLocaleString()}</td>
+                            <td>${attempt.ip_address}</td>
+                            <td>${attempt.doctor_id}</td>
+                            <td>
+                                <span class="badge ${attempt.success ? 'bg-success' : 'bg-danger'}">
+                                    ${attempt.success ? '성공' : '실패'}
+                                </span>
+                            </td>
+                            <td>${attempt.user_agent}</td>
+                        `;
+                        attemptsTable.appendChild(row);
+                    });
+                }
+                
+                // IP 차단 목록 로드
+                const blocksResponse = await fetch('/admin/ip-blocks', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                if (blocksResponse.ok) {
+                    const blocks = await blocksResponse.json();
+                    const blocksTable = document.getElementById('ipBlocksTable');
+                    blocksTable.innerHTML = '';
+                    
+                    blocks.forEach(block => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${block.ip_address}</td>
+                            <td>${block.attempts}</td>
+                            <td>${new Date(block.last_attempt).toLocaleString()}</td>
+                            <td>${new Date(block.blocked_until).toLocaleString()}</td>
+                        `;
+                        blocksTable.appendChild(row);
+                    });
+                }
+            } catch (error) {
+                console.error('보안 데이터 로드 중 오류:', error);
+                showToast('보안 데이터를 불러오는 중 오류가 발생했습니다.', 'error');
+            }
+        }
+
+        // 시스템 설정 로드
+        async function loadSystemSettings() {
+            try {
+                const response = await fetch('/admin/settings', {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                if (response.ok) {
+                    const settings = await response.json();
+                    document.getElementById('maxConcurrentSessions').value = settings.max_concurrent_sessions || 2;
+                    document.getElementById('sessionTimeout').value = settings.session_timeout_minutes || 30;
+                }
+            } catch (error) {
+                console.error('시스템 설정 로드 중 오류:', error);
+                showToast('시스템 설정을 불러오는 중 오류가 발생했습니다.', 'error');
+            }
+        }
+
+        // 시스템 설정 저장
+        document.getElementById('systemSettingsForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            try {
+                const settings = {
+                    max_concurrent_sessions: document.getElementById('maxConcurrentSessions').value,
+                    session_timeout_minutes: document.getElementById('sessionTimeout').value
+                };
+                
+                const response = await fetch('/admin/settings', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(settings)
+                });
+                
+                if (response.ok) {
+                    showToast('시스템 설정이 저장되었습니다.', 'success');
+                } else {
+                    const error = await response.json();
+                    showToast(error.detail || '시스템 설정 저장 중 오류가 발생했습니다.', 'error');
+                }
+            } catch (error) {
+                console.error('시스템 설정 저장 중 오류:', error);
+                showToast('시스템 설정 저장 중 오류가 발생했습니다.', 'error');
+            }
         });
     </script>
     <style>

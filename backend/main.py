@@ -1,9 +1,9 @@
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy import Column, String, DateTime, Text, Boolean, Integer, func, extract, and_, or_, create_engine, text
+from sqlalchemy import Column, String, DateTime, Text, Boolean, Integer, func, extract, and_, or_, create_engine, text, Float, JSON
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.pool import QueuePool
 from pydantic import BaseModel, EmailStr
 from datetime import datetime, timedelta, timezone
@@ -163,9 +163,10 @@ security = HTTPBearer()
 class User(Base):
     __tablename__ = "users"
     
-    doctor_id = Column(String, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True, index=True)
+    doctor_id = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
+    password = Column(String)
     first_name = Column(String)
     last_name = Column(String)
     specialty = Column(String)
@@ -173,7 +174,46 @@ class User(Base):
     phone = Column(String, nullable=True)
     medical_license = Column(String, nullable=True)
     is_verified = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=lambda: get_kst_now().replace(tzinfo=None))
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_password_change = Column(DateTime, default=datetime.utcnow)
+    password_history = Column(JSON, default=list)  # Store last 5 passwords
+    login_attempts = Column(Integer, default=0)
+    last_login_attempt = Column(DateTime)
+    last_login = Column(DateTime)
+    is_locked = Column(Boolean, default=False)
+    lock_until = Column(DateTime)
+
+# Password policy constants
+PASSWORD_MIN_LENGTH = 8
+PASSWORD_MAX_LENGTH = 128
+PASSWORD_HISTORY_SIZE = 5
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_LOCKOUT_DURATION = 30  # minutes
+
+def validate_password(password: str) -> bool:
+    """Validate password against security policy"""
+    if len(password) < PASSWORD_MIN_LENGTH:
+        return False
+    if len(password) > PASSWORD_MAX_LENGTH:
+        return False
+    
+    has_upper = any(c.isupper() for c in password)
+    has_lower = any(c.islower() for c in password)
+    has_digit = any(c.isdigit() for c in password)
+    has_special = any(not c.isalnum() for c in password)
+    
+    return has_upper and has_lower and has_digit and has_special
+
+def check_password_history(user: User, new_password: str) -> bool:
+    """Check if password was used in recent history"""
+    if not user.password_history:
+        return True
+    
+    for old_password in user.password_history:
+        if verify_password(new_password, old_password):
+            return False
+    return True
 
 class SCTSession(Base):
     __tablename__ = "sct_sessions"
@@ -202,6 +242,19 @@ class SCTInterpretation(Base):
     session_id = Column(String, primary_key=True, index=True)
     interpretation = Column(Text)
     patient_name = Column(String)
+    created_at = Column(DateTime, default=lambda: get_kst_now().replace(tzinfo=None))
+
+class GPTTokenUsage(Base):
+    __tablename__ = "gpt_token_usage"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    doctor_id = Column(String, index=True)
+    session_id = Column(String, index=True)
+    prompt_tokens = Column(Integer)
+    completion_tokens = Column(Integer)
+    total_tokens = Column(Integer)
+    model = Column(String)  # gpt-4, gpt-3.5-turbo 등
+    cost = Column(Float)  # USD 기준
     created_at = Column(DateTime, default=lambda: get_kst_now().replace(tzinfo=None))
 
 # Pydantic 모델
@@ -334,6 +387,33 @@ SCT_ITEM_CATEGORIES = {
     "성격특성": [12, 14, 20, 24, 27, 35],
 }
 
+# GPT 모델별 토큰 비용 (USD per 1K tokens)
+GPT_MODEL_COSTS = {
+    "gpt-4": {
+        "prompt": 0.03,
+        "completion": 0.06
+    },
+    "gpt-3.5-turbo": {
+        "prompt": 0.0015,
+        "completion": 0.002
+    },
+    "gpt-4-turbo-preview": {
+        "prompt": 0.01,
+        "completion": 0.03
+    }
+}
+
+def calculate_gpt_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """GPT 모델 사용 비용을 계산합니다."""
+    if model not in GPT_MODEL_COSTS:
+        return 0.0
+    
+    costs = GPT_MODEL_COSTS[model]
+    prompt_cost = (prompt_tokens / 1000) * costs["prompt"]
+    completion_cost = (completion_tokens / 1000) * costs["completion"]
+    
+    return round(prompt_cost + completion_cost, 6)
+
 # 애플리케이션 시작 시 테이블 생성
 @app.on_event("startup")
 async def startup_event():
@@ -370,30 +450,37 @@ async def register(user: UserCreate, db = Depends(get_db)):
     try:
         logger.info(f"🏥 회원가입 시도: {user.doctor_id}")
         
-        # 기존 사용자 확인
-        existing_user = db.query(User).filter(
-            (User.doctor_id == user.doctor_id) | (User.email == user.email)
-        ).first()
+        # Validate password
+        if not validate_password(user.password):
+            raise HTTPException(
+                status_code=400,
+                detail="비밀번호는 8자 이상이며, 대문자, 소문자, 숫자, 특수문자를 포함해야 합니다."
+            )
         
+        # Check if user exists
+        existing_user = db.query(User).filter(User.doctor_id == user.doctor_id).first()
         if existing_user:
-            raise HTTPException(status_code=400, detail="이미 존재하는 ID 또는 이메일입니다")
+            raise HTTPException(status_code=400, detail="이미 존재하는 의사 ID입니다.")
         
-        # 새 사용자 생성
-        db_user = User(
+        # Create new user
+        hashed_password = hash_password(user.password)
+        new_user = User(
             doctor_id=user.doctor_id,
             email=user.email,
-            hashed_password=hash_password(user.password),
+            password=hashed_password,
             first_name=user.first_name,
             last_name=user.last_name,
             specialty=user.specialty,
             hospital=user.hospital,
             phone=user.phone,
-            medical_license=user.medical_license
+            medical_license=user.medical_license,
+            password_history=[hashed_password],
+            last_password_change=datetime.utcnow()
         )
         
-        db.add(db_user)
+        db.add(new_user)
         db.commit()
-        db.refresh(db_user)
+        db.refresh(new_user)
         
         logger.info(f"✅ 새 사용자 등록: {user.doctor_id}")
         return {"message": "회원가입이 완료되었습니다"}
@@ -412,8 +499,41 @@ async def login(user_login: UserLogin, db = Depends(get_db)):
         
         user = db.query(User).filter(User.doctor_id == user_login.doctor_id).first()
         
-        if not user or not verify_password(user_login.password, user.hashed_password):
+        # Check if account is locked
+        if user and user.is_locked:
+            if user.lock_until and user.lock_until > datetime.utcnow():
+                remaining_time = (user.lock_until - datetime.utcnow()).total_seconds() / 60
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"계정이 잠겨 있습니다. {int(remaining_time)}분 후에 다시 시도해주세요."
+                )
+            else:
+                # Reset lock if lock period has expired
+                user.is_locked = False
+                user.login_attempts = 0
+                user.lock_until = None
+                db.commit()
+        
+        if not user or not verify_password(user_login.password, user.password):
+            if user:
+                user.login_attempts += 1
+                user.last_login_attempt = datetime.utcnow()
+                
+                if user.login_attempts >= MAX_LOGIN_ATTEMPTS:
+                    user.is_locked = True
+                    user.lock_until = datetime.utcnow() + timedelta(minutes=LOGIN_LOCKOUT_DURATION)
+                
+                db.commit()
+            
             raise HTTPException(status_code=401, detail="잘못된 ID 또는 비밀번호입니다")
+        
+        # Reset login attempts on successful login
+        user.login_attempts = 0
+        user.last_login = datetime.utcnow()
+        db.commit()
+        
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="비활성화된 계정입니다. 관리자에게 문의하세요.")
         
         access_token = create_access_token(data={"sub": user.doctor_id})
         
@@ -453,6 +573,11 @@ async def create_session(
 ):
     try:
         logger.info(f"🏗️ 새 세션 생성 요청: patient={session_data.patient_name}, doctor={current_user}")
+        
+        # 사용자 활성화 상태 확인
+        user = db.query(User).filter(User.doctor_id == current_user).first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=403, detail="비활성화된 계정입니다. 관리자에게 문의하세요.")
         
         session_id = str(uuid.uuid4())
         expires_at = get_kst_now() + timedelta(days=7)
@@ -1369,7 +1494,7 @@ async def generate_interpretation_endpoint(session_id: str, db = Depends(get_db)
             raise HTTPException(status_code=400, detail="응답이 없습니다")
         
         # AI 해석 생성
-        interpretation = await generate_ai_interpretation(responses, session.patient_name)
+        interpretation = await generate_ai_interpretation(responses, session.patient_name, session.doctor_id, session.session_id, db)
         
         # 해석 결과 저장
         existing_interpretation = db.query(SCTInterpretation).filter(
@@ -1434,147 +1559,67 @@ async def get_interpretation_endpoint(session_id: str, db = Depends(get_db)):
         logger.error(f"❌ 해석 조회 오류: {e}")
         raise HTTPException(status_code=500, detail=f"해석 조회 중 오류: {str(e)}")
 
-async def generate_ai_interpretation(responses: List[SCTResponse], patient_name: str) -> str:
-    """자연스럽고 전문적인 SCT 해석을 생성합니다."""
+async def generate_ai_interpretation(responses: List[SCTResponse], patient_name: str, doctor_id: str, session_id: str, db) -> str:
+    """OpenAI API를 사용하여 SCT 응답을 해석합니다."""
     if not openai_client:
+        logger.warning("⚠️ OpenAI 클라이언트가 초기화되지 않았습니다. 기본 해석을 반환합니다.")
         return generate_default_interpretation(responses, patient_name)
     
-    # 응답 텍스트 구성
-    responses_text = "\n".join([
-        f"{resp.item_no}. {resp.stem} → {resp.answer}"
-        for resp in responses
-    ])
-    
-    # 카테고리별 응답 분류
-    category_mapping = {
-        "가족관계": [2, 13, 19, 26, 29, 39, 48, 49, 50],
-        "대인관계": [6, 22, 32, 44], 
-        "자아개념": [15, 34, 30],
-        "정서조절": [5, 21, 40, 43],
-        "성_결혼관": [8, 9, 10, 23, 25, 36, 37, 47],
-        "미래전망": [4, 16, 18, 28, 41, 42],
-        "과거경험": [7, 17, 33, 45],
-        "현실적응": [1, 3, 11, 31, 38, 46],
-        "성격특성": [12, 14, 20, 24, 27, 35]
-    }
-    
-    # 카테고리별 응답 정리
-    category_text = ""
-    for category, item_numbers in category_mapping.items():
-        items = [f"{resp.item_no}. {resp.stem} → {resp.answer}" 
-                for resp in responses if resp.item_no in item_numbers]
-        if items:
-            category_text += f"\n【{category}】\n" + "\n".join(items) + "\n"
-
-    # 자연스럽고 전문적인 프롬프트
-    system_prompt = """당신은 25년 경력의 정신건강의학과 전문의이자 임상심리학자입니다. 
-SCT 문장완성검사의 전문가로서, 임상에서 실제로 활용 가능한 종합적인 해석을 제공해야 합니다.
-
-## 보고서 작성 원칙
-1. **임상적 유용성**: 치료 계획 수립에 실질적으로 도움이 되는 정보 제공
-2. **구체성과 근거**: 각 영역별로 대표적 응답을 인용하며 분석
-3. **균형적 관점**: 강점과 취약성을 균형있게 제시
-4. **실행 가능성**: 구체적이고 현실적인 치료 권고안 제시
-5. **전문성**: 임상 용어를 적절히 사용하되 이해하기 쉽게 설명
-
-## 해석 시 주의사항  
-- 진단보다는 기능적 평가와 성격 구조 분석에 집중
-- 각 영역별로 핵심 응답을 인용하며 근거 제시
-- 치료적 개입의 우선순위를 명확히 제시
-- 환자의 협력 가능성과 동기 수준 평가 포함
-- 예후와 성장 잠재력에 대한 전문적 견해 제시"""
-
-    user_prompt = f"""
-환자: {patient_name}
-검사일: {get_kst_now().strftime('%Y년 %m월 %d일')}
-
-## 전체 응답 (50문항)
-{responses_text}
-
-## 카테고리별 분류
-{category_text}
-
-위 SCT 결과를 바탕으로 다음 구조로 **종합적이고 실용적인** 임상 해석 보고서를 작성해주세요:
-
-# SCT (문장완성검사) 임상 해석 보고서
-
-## 1. 검사 개요
-- 환자 기본정보 및 검사 협조도
-- 응답 특성 및 전반적 인상
-
-## 2. 주요 심리적 특성 분석
-
-### 2.1 가족관계 및 애착 패턴
-- 부모에 대한 인식과 가족 역동
-- **핵심 응답 2-3개 인용하며 분석**
-
-### 2.2 대인관계 및 사회적 기능
-- 친밀감 형성 능력과 대인 신뢰도
-- **핵심 응답 2-3개 인용하며 분석**
-
-### 2.3 자아개념 및 정체성
-- 자기 인식과 자존감 수준  
-- **핵심 응답 2개 인용하며 분석**
-
-### 2.4 정서조절 및 스트레스 대처
-- 주요 정서 이슈와 대처 방식
-- **핵심 응답 2-3개 인용하며 분석**
-
-### 2.5 성역할 및 이성관계
-- 성정체성과 이성에 대한 태도
-- **핵심 응답 1-2개 인용**
-
-### 2.6 미래전망 및 목표지향성
-- 미래 계획과 동기 수준
-- **핵심 응답 1-2개 인용**
-
-### 2.7 과거경험 및 현실적응
-- 과거 경험의 영향과 현실 대처능력
-- **핵심 응답 1-2개 인용**
-
-## 3. 임상적 평가
-
-### 3.1 주요 방어기제 및 성격특성
-- 사용하는 방어기제와 성격 구조
-
-### 3.2 정신병리학적 고려사항
-- 관찰되는 증상 및 위험요소 평가
-
-## 4. 치료적 권고사항
-
-### 4.1 우선 개입 영역
-- 즉시 다뤄야 할 핵심 이슈
-
-### 4.2 생활관리 및 지원방안
-- 일상 개선방안과 사회적 지지체계
-
-## 5. 요약 및 예후
-- 핵심 특성 요약
-- 치료 예후와 협력 가능성
-- 재평가 권고시기
-- 환자 강점 및 성장 잠재력
-
-**각 영역별로 구체적 응답을 인용하며, 임상에서 실제로 활용 가능한 전문적이고 종합적인 해석을 제공해주세요.**
-"""
-
     try:
-        # GPT-4o-mini 사용
-        response = openai_client.chat.completions.create(
-            model="gpt-4o-mini",
+        # 프롬프트 구성
+        prompt = f"""다음은 {patient_name}님의 문장완성검사(SCT) 응답입니다. 
+각 응답을 분석하여 심리학적 해석을 제공해주세요.
+
+응답:
+"""
+        for response in responses:
+            prompt += f"\n{response.item_no}. {response.stem} → {response.answer}"
+        
+        prompt += """
+
+해석 시 다음 사항을 고려해주세요:
+1. 각 응답의 심리적 의미
+2. 반복되는 주제나 패턴
+3. 감정과 태도의 표현
+4. 대인관계와 자아개념
+5. 스트레스와 적응 수준
+
+전문적이고 객관적인 해석을 제공해주세요."""
+
+        # API 호출
+        response = await openai_client.chat.completions.create(
+            model="gpt-4-turbo-preview",
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
+                {"role": "system", "content": "당신은 임상심리학 전문가입니다. SCT 응답을 분석하여 전문적이고 객관적인 해석을 제공해주세요."},
+                {"role": "user", "content": prompt}
             ],
-            max_tokens=4000,
-            temperature=0.2,
+            temperature=0.7,
+            max_tokens=2000
         )
         
-        interpretation = response.choices[0].message.content
-        logger.info(f"✅ 전문적 해석 생성 완료: {len(interpretation)} 문자")
-        return interpretation
+        # 토큰 사용량 기록
+        usage = response.usage
+        model = "gpt-4-turbo-preview"
+        cost = calculate_gpt_cost(model, usage.prompt_tokens, usage.completion_tokens)
+        
+        token_usage = GPTTokenUsage(
+            doctor_id=doctor_id,
+            session_id=session_id,
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            total_tokens=usage.total_tokens,
+            model=model,
+            cost=cost
+        )
+        db.add(token_usage)
+        db.commit()
+        
+        logger.info(f"✅ GPT 해석 생성 완료: {usage.total_tokens} 토큰 사용 (${cost})")
+        
+        return response.choices[0].message.content
         
     except Exception as e:
-        logger.error(f"❌ OpenAI API 오류: {e}")
+        logger.error(f"❌ GPT 해석 생성 실패: {e}")
         return generate_default_interpretation(responses, patient_name)
 
 def generate_default_interpretation(responses: List[SCTResponse], patient_name: str) -> str:
@@ -1612,6 +1657,429 @@ OpenAI API 연결 오류로 인해 자동 해석을 생성할 수 없습니다.
 
 *본 보고서는 시스템 오류로 인한 임시 보고서입니다.*
 """
+
+@app.get("/admin/gpt-usage")
+async def get_gpt_usage(
+    doctor_id: str = None,
+    start_date: str = None,
+    end_date: str = None,
+    db = Depends(get_db),
+    current_user: str = Depends(verify_token)
+):
+    """GPT 토큰 사용량과 비용을 조회합니다."""
+    try:
+        check_admin_permission(current_user)
+        
+        # 기본 쿼리
+        query = db.query(GPTTokenUsage)
+        
+        # 의사 ID 필터
+        if doctor_id:
+            query = query.filter(GPTTokenUsage.doctor_id == doctor_id)
+        
+        # 날짜 필터
+        if start_date:
+            start = datetime.strptime(start_date, "%Y-%m-%d").replace(tzinfo=KST)
+            query = query.filter(GPTTokenUsage.created_at >= start)
+        if end_date:
+            end = datetime.strptime(end_date, "%Y-%m-%d").replace(tzinfo=KST)
+            end = end.replace(hour=23, minute=59, second=59)
+            query = query.filter(GPTTokenUsage.created_at <= end)
+        
+        # 사용량 집계
+        usage_stats = query.with_entities(
+            func.sum(GPTTokenUsage.prompt_tokens).label("total_prompt_tokens"),
+            func.sum(GPTTokenUsage.completion_tokens).label("total_completion_tokens"),
+            func.sum(GPTTokenUsage.total_tokens).label("total_tokens"),
+            func.sum(GPTTokenUsage.cost).label("total_cost")
+        ).first()
+        
+        # 모델별 사용량
+        model_stats = db.query(
+            GPTTokenUsage.model,
+            func.count(GPTTokenUsage.id).label("usage_count"),
+            func.sum(GPTTokenUsage.total_tokens).label("total_tokens"),
+            func.sum(GPTTokenUsage.cost).label("total_cost")
+        ).group_by(GPTTokenUsage.model).all()
+        
+        # 의사별 사용량
+        doctor_stats = db.query(
+            GPTTokenUsage.doctor_id,
+            func.count(GPTTokenUsage.id).label("usage_count"),
+            func.sum(GPTTokenUsage.total_tokens).label("total_tokens"),
+            func.sum(GPTTokenUsage.cost).label("total_cost")
+        ).group_by(GPTTokenUsage.doctor_id).all()
+        
+        return {
+            "total_usage": {
+                "prompt_tokens": usage_stats.total_prompt_tokens or 0,
+                "completion_tokens": usage_stats.total_completion_tokens or 0,
+                "total_tokens": usage_stats.total_tokens or 0,
+                "total_cost": round(usage_stats.total_cost or 0, 6)
+            },
+            "model_stats": [
+                {
+                    "model": stat.model,
+                    "usage_count": stat.usage_count,
+                    "total_tokens": stat.total_tokens,
+                    "total_cost": round(stat.total_cost, 6)
+                }
+                for stat in model_stats
+            ],
+            "doctor_stats": [
+                {
+                    "doctor_id": stat.doctor_id,
+                    "usage_count": stat.usage_count,
+                    "total_tokens": stat.total_tokens,
+                    "total_cost": round(stat.total_cost, 6)
+                }
+                for stat in doctor_stats
+            ]
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ GPT 사용량 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"사용량 조회 중 오류: {str(e)}")
+
+# IP security constants
+MAX_IP_ATTEMPTS = 10
+IP_BLOCK_DURATION = 60  # minutes
+
+class IPBlock(Base):
+    __tablename__ = "ip_blocks"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String, index=True)
+    attempts = Column(Integer, default=0)
+    last_attempt = Column(DateTime, default=datetime.utcnow)
+    blocked_until = Column(DateTime)
+    is_blocked = Column(Boolean, default=False)
+
+class LoginAttempt(Base):
+    __tablename__ = "login_attempts"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    ip_address = Column(String, index=True)
+    doctor_id = Column(String, index=True)
+    attempt_time = Column(DateTime, default=datetime.utcnow)
+    success = Column(Boolean, default=False)
+    user_agent = Column(String)
+
+def check_ip_block(ip_address: str, db: Session) -> bool:
+    """Check if IP is blocked"""
+    ip_block = db.query(IPBlock).filter(IPBlock.ip_address == ip_address).first()
+    
+    if not ip_block:
+        return False
+    
+    if ip_block.is_blocked:
+        if ip_block.blocked_until and ip_block.blocked_until > datetime.utcnow():
+            return True
+        else:
+            # Reset block if block period has expired
+            ip_block.is_blocked = False
+            ip_block.attempts = 0
+            ip_block.blocked_until = None
+            db.commit()
+            return False
+    
+    return False
+
+def record_login_attempt(
+    ip_address: str,
+    doctor_id: str,
+    success: bool,
+    user_agent: str,
+    db: Session
+):
+    """Record login attempt and update IP block status"""
+    # Record attempt
+    attempt = LoginAttempt(
+        ip_address=ip_address,
+        doctor_id=doctor_id,
+        success=success,
+        user_agent=user_agent
+    )
+    db.add(attempt)
+    
+    # Update IP block
+    ip_block = db.query(IPBlock).filter(IPBlock.ip_address == ip_address).first()
+    if not ip_block:
+        ip_block = IPBlock(ip_address=ip_address)
+        db.add(ip_block)
+    
+    if not success:
+        ip_block.attempts += 1
+        ip_block.last_attempt = datetime.utcnow()
+        
+        if ip_block.attempts >= MAX_IP_ATTEMPTS:
+            ip_block.is_blocked = True
+            ip_block.blocked_until = datetime.utcnow() + timedelta(minutes=IP_BLOCK_DURATION)
+    else:
+        ip_block.attempts = 0
+        ip_block.is_blocked = False
+        ip_block.blocked_until = None
+    
+    db.commit()
+
+@app.post("/login")
+async def login(
+    user_data: UserLogin,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    try:
+        ip_address = request.client.host
+        user_agent = request.headers.get("user-agent")
+        
+        # Check IP block
+        if check_ip_block(ip_address, db):
+            raise HTTPException(
+                status_code=403,
+                detail=f"너무 많은 로그인 시도로 인해 IP가 차단되었습니다. {IP_BLOCK_DURATION}분 후에 다시 시도해주세요."
+            )
+        
+        user = db.query(User).filter(User.doctor_id == user_data.doctor_id).first()
+        
+        # Check if account is locked
+        if user and user.is_locked:
+            if user.lock_until and user.lock_until > datetime.utcnow():
+                remaining_time = (user.lock_until - datetime.utcnow()).total_seconds() / 60
+                record_login_attempt(ip_address, user_data.doctor_id, False, user_agent, db)
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"계정이 잠겨 있습니다. {int(remaining_time)}분 후에 다시 시도해주세요."
+                )
+            else:
+                # Reset lock if lock period has expired
+                user.is_locked = False
+                user.login_attempts = 0
+                user.lock_until = None
+                db.commit()
+        
+        if not user or not verify_password(user_data.password, user.password):
+            if user:
+                user.login_attempts += 1
+                user.last_login_attempt = datetime.utcnow()
+                
+                if user.login_attempts >= MAX_LOGIN_ATTEMPTS:
+                    user.is_locked = True
+                    user.lock_until = datetime.utcnow() + timedelta(minutes=LOGIN_LOCKOUT_DURATION)
+                
+                db.commit()
+            
+            record_login_attempt(ip_address, user_data.doctor_id, False, user_agent, db)
+            raise HTTPException(status_code=401, detail="잘못된 ID 또는 비밀번호입니다.")
+        
+        # Reset login attempts on successful login
+        user.login_attempts = 0
+        user.last_login = datetime.utcnow()
+        db.commit()
+        
+        if not user.is_active:
+            record_login_attempt(ip_address, user_data.doctor_id, False, user_agent, db)
+            raise HTTPException(status_code=403, detail="비활성화된 계정입니다. 관리자에게 문의하세요.")
+        
+        record_login_attempt(ip_address, user_data.doctor_id, True, user_agent, db)
+        access_token = create_access_token(data={"sub": user.doctor_id})
+        return {"access_token": access_token, "token_type": "bearer"}
+        
+    except Exception as e:
+        logger.error(f"Login error: {str(e)}")
+        raise HTTPException(status_code=500, detail="로그인 중 오류가 발생했습니다.")
+
+@app.get("/admin/login-attempts")
+async def get_login_attempts(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Check if user is admin
+        user = db.query(User).filter(User.doctor_id == current_user).first()
+        if not user or not user.is_admin:
+            raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
+        
+        # Get recent login attempts
+        attempts = db.query(LoginAttempt).order_by(
+            LoginAttempt.attempt_time.desc()
+        ).limit(100).all()
+        
+        return attempts
+        
+    except Exception as e:
+        logger.error(f"Login attempts retrieval error: {str(e)}")
+        raise HTTPException(status_code=500, detail="로그인 시도 기록 조회 중 오류가 발생했습니다.")
+
+@app.get("/admin/ip-blocks")
+async def get_ip_blocks(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Check if user is admin
+        user = db.query(User).filter(User.doctor_id == current_user).first()
+        if not user or not user.is_admin:
+            raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
+        
+        # Get active IP blocks
+        blocks = db.query(IPBlock).filter(
+            IPBlock.is_blocked == True,
+            IPBlock.blocked_until > datetime.utcnow()
+        ).all()
+        
+        return blocks
+        
+    except Exception as e:
+        logger.error(f"IP blocks retrieval error: {str(e)}")
+        raise HTTPException(status_code=500, detail="IP 차단 목록 조회 중 오류가 발생했습니다.")
+
+class SystemSettings(Base):
+    __tablename__ = "system_settings"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, unique=True, index=True)
+    value = Column(String)
+    description = Column(String)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = Column(String)
+
+# Default system settings
+DEFAULT_SETTINGS = [
+    {
+        "key": "max_concurrent_sessions",
+        "value": "2",
+        "description": "사용자당 최대 동시 세션 수"
+    },
+    {
+        "key": "session_timeout_minutes",
+        "value": "30",
+        "description": "세션 타임아웃 시간(분)"
+    }
+]
+
+def get_system_setting(key: str, db: Session) -> str:
+    """Get system setting value"""
+    setting = db.query(SystemSettings).filter(SystemSettings.key == key).first()
+    if not setting:
+        # Create default setting if not exists
+        default = next((s for s in DEFAULT_SETTINGS if s["key"] == key), None)
+        if default:
+            setting = SystemSettings(**default)
+            db.add(setting)
+            db.commit()
+            db.refresh(setting)
+    return setting.value if setting else None
+
+@app.post("/admin/settings")
+async def update_system_settings(
+    settings: dict,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Check if user is admin
+        user = db.query(User).filter(User.doctor_id == current_user).first()
+        if not user or not user.is_admin:
+            raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
+        
+        for key, value in settings.items():
+            setting = db.query(SystemSettings).filter(SystemSettings.key == key).first()
+            if setting:
+                setting.value = str(value)
+                setting.updated_by = current_user
+            else:
+                setting = SystemSettings(
+                    key=key,
+                    value=str(value),
+                    updated_by=current_user
+                )
+                db.add(setting)
+        
+        db.commit()
+        return {"message": "시스템 설정이 업데이트되었습니다."}
+        
+    except Exception as e:
+        logger.error(f"System settings update error: {str(e)}")
+        raise HTTPException(status_code=500, detail="시스템 설정 업데이트 중 오류가 발생했습니다.")
+
+@app.get("/admin/settings")
+async def get_system_settings(
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    try:
+        # Check if user is admin
+        user = db.query(User).filter(User.doctor_id == current_user).first()
+        if not user or not user.is_admin:
+            raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다.")
+        
+        settings = db.query(SystemSettings).all()
+        return {setting.key: setting.value for setting in settings}
+        
+    except Exception as e:
+        logger.error(f"System settings retrieval error: {str(e)}")
+        raise HTTPException(status_code=500, detail="시스템 설정 조회 중 오류가 발생했습니다.")
+
+@app.post("/sessions")
+async def create_session(
+    session_data: SessionCreate,
+    current_user: str = Depends(get_current_user),
+    request: Request = None,
+    db: Session = Depends(get_db)
+):
+    try:
+        # Check user's active status
+        user = db.query(User).filter(User.doctor_id == current_user).first()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=403, detail="비활성화된 계정입니다. 관리자에게 문의하세요.")
+        
+        # Get max concurrent sessions from settings
+        max_sessions = int(get_system_setting("max_concurrent_sessions", db))
+        
+        # Check concurrent sessions
+        active_sessions = db.query(Session).filter(
+            Session.doctor_id == current_user,
+            Session.is_active == True
+        ).all()
+        
+        # Deactivate timed out sessions
+        timeout_minutes = int(get_system_setting("session_timeout_minutes", db))
+        for session in active_sessions:
+            if (datetime.utcnow() - session.last_activity).total_seconds() > (timeout_minutes * 60):
+                session.is_active = False
+                db.commit()
+        
+        # Count remaining active sessions
+        active_sessions = [s for s in active_sessions if s.is_active]
+        if len(active_sessions) >= max_sessions:
+            raise HTTPException(
+                status_code=403,
+                detail=f"최대 {max_sessions}개의 동시 세션만 허용됩니다. 다른 세션을 종료해주세요."
+            )
+        
+        # Create new session
+        session_id = str(uuid.uuid4())
+        new_session = Session(
+            session_id=session_id,
+            doctor_id=current_user,
+            patient_name=session_data.patient_name,
+            ip_address=request.client.host if request else None,
+            user_agent=request.headers.get("user-agent") if request else None
+        )
+        
+        db.add(new_session)
+        db.commit()
+        db.refresh(new_session)
+        
+        return {"session_id": session_id}
+        
+    except Exception as e:
+        logger.error(f"Session creation error: {str(e)}")
+        raise HTTPException(status_code=500, detail="세션 생성 중 오류가 발생했습니다.")
+
+def get_current_user():
+    # TODO: Replace with real authentication logic (e.g., JWT token validation)
+    return "admin"
 
 if __name__ == "__main__":
     import uvicorn

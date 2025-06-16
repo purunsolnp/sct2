@@ -367,7 +367,7 @@
 
                     setTimeout(() => {
                         // 관리자는 admin.html로, 일반 의사는 doctor.html로
-                        if (['admin', 'doctor1'].includes(doctorId)) {
+                        if (userData.doctorId === 'admin' || userData.doctorId === 'doctor1') {
                             window.location.href = 'admin.html';
                         } else {
                             window.location.href = 'doctor.html';

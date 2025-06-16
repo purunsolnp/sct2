@@ -374,18 +374,16 @@
         
         async function loadSession() {
             try {
-                const response = await safeApiCall(`${API_BASE}/sct/session/${sessionId}/items`);
+                const data = await safeApiCall(`${API_BASE}/sct/session/${sessionId}/items`);
                 
-                if (!response) {
-                    if (response === null) {
+                if (!data) {
+                    if (data === null) {
                         throw new Error('존재하지 않는 검사입니다.');
-                    } else if (response === false) {
+                    } else if (data === false) {
                         throw new Error('만료된 검사입니다.');
                     }
                     throw new Error('검사를 불러올 수 없습니다.');
                 }
-                
-                const data = response;
                 
                 sessionId = data.session_id;
                 patientName = data.patient_name;
@@ -513,29 +511,18 @@
         
         async function saveToServer() {
             try {
-                const responses = [];
-                
-                for (let i = 0; i < questions.length; i++) {
-                    if (answers[i] && answers[i].trim()) {
-                        responses.push({
-                            item_no: questions[i].item_no,
-                            stem: questions[i].stem,
-                            answer: answers[i].trim()
-                        });
-                    }
-                }
-                
                 const response = await safeApiCall(`${API_BASE}/sct/session/${sessionId}/responses`, {
                     method: 'POST',
-                    body: JSON.stringify(responses)
+                    body: JSON.stringify(answers)
                 });
                 
                 if (!response) {
-                    console.error('Save failed:', response);
+                    throw new Error('저장에 실패했습니다.');
                 }
                 
             } catch (error) {
                 console.error('Auto save error:', error);
+                showError('저장 중 오류가 발생했습니다.');
             }
         }
         
@@ -562,53 +549,22 @@
         }
         
         async function completeTest() {
-            saveCurrentAnswer();
-            
-            const unanswered = [];
-            for (let i = 0; i < questions.length; i++) {
-                if (!answers[i] || !answers[i].trim()) {
-                    unanswered.push(i + 1);
-                }
-            }
-            
-            if (unanswered.length > 0) {
-                const proceed = confirm(
-                    `다음 문항들이 완성되지 않았습니다: ${unanswered.join(', ')}\n\n` +
-                    '그래도 검사를 완료하시겠습니까?'
-                );
-                
-                if (!proceed) {
-                    return;
-                }
-            }
-            
             try {
-                const responses = [];
-                
-                for (let i = 0; i < questions.length; i++) {
-                    if (answers[i] && answers[i].trim()) {
-                        responses.push({
-                            item_no: questions[i].item_no,
-                            stem: questions[i].stem,
-                            answer: answers[i].trim()
-                        });
-                    }
-                }
-                
-                const response = await safeApiCall(`${API_BASE}/sct/session/${sessionId}/responses`, {
+                const response = await safeApiCall(`${API_BASE}/sct/session/${sessionId}/complete`, {
                     method: 'POST',
-                    body: JSON.stringify(responses)
+                    body: JSON.stringify(answers)
                 });
                 
                 if (!response) {
-                    throw new Error('저장에 실패했습니다.');
+                    throw new Error('검사 완료에 실패했습니다.');
                 }
                 
                 document.getElementById('main-screen').style.display = 'none';
                 showCompletion();
                 
             } catch (error) {
-                alert('검사 완료 중 오류가 발생했습니다: ' + error.message);
+                console.error('Complete test error:', error);
+                showError('검사 완료 중 오류가 발생했습니다.');
             }
         }
         

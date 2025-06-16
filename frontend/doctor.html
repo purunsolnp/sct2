@@ -301,43 +301,30 @@
                 margin: 0 !important;
                 padding: 0 !important;
             }
-            .modal, .modal-content, .modal-header, .modal-body {
-                box-shadow: none !important;
-                background: white !important;
-                color: #222 !important;
-            }
-            .modal {
-                position: static !important;
-                display: block !important;
-                width: 100% !important;
-                height: auto !important;
-                overflow: visible !important;
-                z-index: 1 !important;
-            }
-            .modal-header, .modal-actions, .close-button, .action-button {
+            /* 모든 UI 숨김 */
+            .header, .container, .modal-header, .modal-actions, .close-button, .action-button, .modal, .modal-content, .modal-body, .modal-footer, .stats-grid, .card, .search-controls, .pagination, .sessions-table, .stat-card, .stat-number, .stat-label, .form-group, .form-input, .form-select, .button, .button-secondary, .alert, .link-display, .link-text, .logout-btn, .user-info, .debug-info, .debug-content, .footer, .no-print, .print-hide {
                 display: none !important;
             }
-            .modal-body, .interpretation-content {
-                padding: 0 !important;
-                margin: 0 !important;
-                background: white !important;
-                color: #222 !important;
-                font-size: 1em !important;
-                box-shadow: none !important;
-            }
-            #interpretation-modal {
-                position: static !important;
+            /* 보고서 본문만 인쇄 */
+            #interpretation-modal, .interpretation-content {
                 display: block !important;
+                position: static !important;
                 width: 100% !important;
                 height: auto !important;
-                overflow: visible !important;
                 background: white !important;
+                color: #222 !important;
                 box-shadow: none !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                font-size: 1.1em !important;
             }
+            /* 인쇄 시 페이지 넘버, 머리글/푸터 숨김 */
             @page {
                 size: A4;
                 margin: 2cm;
             }
+            /* 인쇄 시 스크롤바 숨김 */
+            ::-webkit-scrollbar { display: none !important; }
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>

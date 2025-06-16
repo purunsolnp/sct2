@@ -1446,6 +1446,13 @@
                 showToast('시스템 설정 저장 중 오류가 발생했습니다.', 'error');
             }
         });
+
+        function getToken() {
+            return localStorage.getItem('access_token');
+        }
+        function showToast(message, type = 'info') {
+            alert(message);
+        }
     </script>
     <style>
     .status-toggle {

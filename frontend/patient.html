@@ -271,7 +271,7 @@
             <div class="patient-info">
                 <h3 style="margin-bottom: 10px; color: #2d3748;">환자 정보</h3>
                 <p><strong>이름:</strong> <span id="patient-name">로딩중...</span></p>
-                <p><strong>검사 ID:</strong> <span id="session-id">로딩중...</span></p>
+                
             </div>
             
             <div class="progress-container">
@@ -400,7 +400,7 @@
                 
                 // UI 초기화
                 document.getElementById('patient-name').textContent = patientName;
-                document.getElementById('session-id').textContent = sessionId;
+                
                 
                 // 완료된 검사인지 확인
                 if (data.status === 'complete') {

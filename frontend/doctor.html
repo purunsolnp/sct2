@@ -1,4 +1,1347 @@
-<!DOCTYPE html>
+<div class="form-group">
+                    <label for="patient-name">환자 이름</label>
+                    <input type="text" id="patient-name" class="form-input" placeholder="환자 이름을 입력하세요" required>
+                </div>
+                <button type="submit" class="button">검사 세션 생성</button>
+            </form>
+            
+            <div id="new-session-alert" class="alert alert-success" style="display: none;">
+                <strong>✅ 새 검사가 생성되었습니다!</strong>
+                <div class="link-display" style="display: block;">
+                    <p><strong>환자에게 전달할 검사 링크:</strong></p>
+                    <div class="link-text" id="patient-link"></div>
+                    <div style="display: flex; gap: 10px;">
+                        <button onclick="copyLink()" class="button button-secondary">📋 링크 복사</button>
+                        <button onclick="sendKakaoLink()" class="button">💬 카카오톡 전송</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- 검사 목록 -->
+        <div class="card">
+            <h2>📋 검사 세션 목록</h2>
+            
+            <!-- 검색 및 필터 컨트롤 -->
+            <div class="search-controls">
+                <input type="text" class="search-input" id="search-patient" placeholder="🔍 환자 이름으로 검색...">
+                <select class="filter-select" id="status-filter">
+                    <option value="">전체 상태</option>
+                    <option value="complete">완료</option>
+                    <option value="incomplete">대기중</option>
+                    <option value="expired">만료</option>
+                </select>
+                <input type="date" class="search-input" id="date-from" title="시작일">
+                <input type="date" class="search-input" id="date-to" title="종료일">
+                <button onclick="resetFilters()" class="button button-secondary">🔄 초기화</button>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                <button onclick="refreshSessions()" class="button button-secondary">🔄 새로고침</button>
+                <div class="pagination-info" id="pagination-info">0개 결과</div>
+            </div>
+            
+            <div id="sessions-loading" class="loading" style="display: none;">
+                검사 목록을 불러오는 중...
+            </div>
+            
+            <table class="sessions-table" id="sessions-table" style="display: none;">
+                <thead>
+                    <tr>
+                        <th>환자명</th>
+                        <th>생성일</th>
+                        <th>제출일</th>
+                        <th>만료일</th>
+                        <th>상태</th>
+                        <th>작업</th>
+                    </tr>
+                </thead>
+                <tbody id="sessions-tbody">
+                </tbody>
+            </table>
+            
+            <!-- 페이징 -->
+            <div class="pagination" id="pagination" style="display: none;">
+                <button onclick="goToPage(1)" id="first-page"><<</button>
+                <button onclick="goToPage(currentPage - 1)" id="prev-page"><</button>
+                <div id="page-numbers"></div>
+                <button onclick="goToPage(currentPage + 1)" id="next-page">></button>
+                <button onclick="goToPage(totalPages)" id="last-page">>></button>
+            </div>
+            
+            <div id="no-sessions" style="display: none; text-align: center; color: #718096; padding: 40px;">
+                검색 조건에 맞는 검사 세션이 없습니다.
+            </div>
+        </div>
+    </div>
+    
+    <!-- 해석 결과 모달 -->
+    <div id="interpretation-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeInterpretationModal()">&times;</span>
+            <h2>📊 SCT 검사 결과 분석</h2>
+            
+            <div class="modal-tabs">
+                <button class="modal-tab active" onclick="switchTab('interpretation')">📋 임상 해석</button>
+                <button class="modal-tab" onclick="switchTab('analysis')">📈 카테고리 분석</button>
+                <button class="modal-tab" onclick="switchTab('responses')">📝 전체 응답</button>
+            </div>
+            
+            <!-- 해석 탭 -->
+            <div id="interpretation-tab" class="tab-content active">
+                <div id="interpretation-loading" class="loading" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p><strong>전문적인 임상 해석을 생성하는 중입니다...</strong></p>
+                    <p>숙련된 정신과 의사 수준의 분석을 위해 최대 60초가 소요될 수 있습니다.</p>
+                </div>
+                <div id="interpretation-content" class="interpretation-content"></div>
+                <div id="interpretation-actions" style="display: none; margin-top: 20px; text-align: center;">
+                    <button onclick="downloadInterpretationPDF()" class="button pdf-button">📄 PDF 보고서 다운로드</button>
+                    <button onclick="downloadInterpretation()" class="button button-secondary" style="margin-left: 10px;">📝 텍스트 다운로드</button>
+                </div>
+            </div>
+            
+            <!-- 카테고리 분석 탭 -->
+            <div id="analysis-tab" class="tab-content">
+                <div id="analysis-loading" class="loading" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p>카테고리별 분석을 준비하는 중...</p>
+                </div>
+                <div id="analysis-content"></div>
+            </div>
+            
+            <!-- 전체 응답 탭 -->
+            <div id="responses-tab" class="tab-content">
+                <div id="responses-content"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        const API_BASE = 'https://sct-backend-7epf.onrender.com';
+        let doctorId = '';
+        let doctorName = '';
+        let allSessions = []; // 전체 세션 데이터
+        let filteredSessions = []; // 필터링된 세션 데이터
+        let currentSessionLink = '';
+        let currentSessionId = '';
+        let currentInterpretation = '';
+        let debugMode = false;
+        
+        // 페이징 관련 변수
+        let currentPage = 1;
+        let itemsPerPage = 10;
+        let totalPages = 1;
+        
+        // 디버그 함수
+        function debugLog(message, data = null) {
+            const timestamp = new Date().toLocaleTimeString();
+            const logMessage = `[${timestamp}] ${message}`;
+            console.log(logMessage, data || '');
+            
+            if (debugMode) {
+                const debugContent = document.getElementById('debug-content');
+                const logEntry = document.createElement('div');
+                logEntry.innerHTML = `${logMessage}${data ? ': ' + JSON.stringify(data, null, 2) : ''}`;
+                debugContent.appendChild(logEntry);
+                debugContent.scrollTop = debugContent.scrollHeight;
+            }
+        }
+        
+        function toggleDebug() {
+            debugMode = !debugMode;
+            const debugInfo = document.getElementById('debug-info');
+            debugInfo.style.display = debugMode ? 'block' : 'none';
+            
+            if (debugMode) {
+                document.getElementById('debug-content').innerHTML = '';
+                debugLog('디버그 모드 활성화');
+                debugLog('현재 API_BASE', API_BASE);
+                debugLog('현재 doctorId', doctorId);
+                debugLog('현재 sessions 수', allSessions.length);
+            }
+        }
+        
+        // API 헤더 (JWT 토큰 포함)
+        function getApiHeaders() {
+            const token = localStorage.getItem('access_token');
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            };
+        }
+        
+        // 페이지 로드 시 실행
+        document.addEventListener('DOMContentLoaded', function() {
+            debugLog('페이지 로드 시작');
+            
+            // 로그인 확인
+            const currentUser = localStorage.getItem('currentUser');
+            if (!currentUser) {
+                alert('로그인이 필요합니다.');
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            // 사용자 정보 설정
+            const userData = JSON.parse(currentUser);
+            doctorId = userData.doctorId;
+            doctorName = userData.name;
+            
+            debugLog('사용자 정보 로드', { doctorId, doctorName });
+            
+            document.getElementById('doctor-id').textContent = doctorId;
+            document.getElementById('doctor-name').textContent = doctorName;
+            
+            loadSessions();
+            setupEventListeners();
+        });
+        
+        // 이벤트 리스너 설정
+        function setupEventListeners() {
+            // 폼 제출 이벤트
+            document.getElementById('create-session-form').addEventListener('submit', createSession);
+            
+            // 검색 및 필터 이벤트
+            document.getElementById('search-patient').addEventListener('input', applyFilters);
+            document.getElementById('status-filter').addEventListener('change', applyFilters);
+            document.getElementById('date-from').addEventListener('change', applyFilters);
+            document.getElementById('date-to').addEventListener('change', applyFilters);
+        }
+        
+        // 로그아웃
+        function logout() {
+            if (confirm('정말 로그아웃 하시겠습니까?')) {
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('access_token');
+                window.location.href = 'login.html';
+            }
+        }
+        
+        // 새 세션 생성
+        async function createSession(event) {
+            event.preventDefault();
+            
+            const patientName = document.getElementById('patient-name').value.trim();
+            if (!patientName) {
+                alert('환자 이름을 입력해주세요.');
+                return;
+            }
+            
+            debugLog('새 세션 생성 시작', { patientName, doctorId });
+            
+            try {
+                const requestBody = {
+                    patient_name: patientName,
+                    assigned_by: doctorId
+                };
+                
+                debugLog('전송할 데이터', requestBody);
+                
+                const response = await fetch(`${API_BASE}/sct/sessions`, {
+                    method: 'POST',
+                    headers: getApiHeaders(),
+                    body: JSON.stringify(requestBody)
+                });
+                
+                debugLog('세션 생성 응답 상태', response.status);
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('currentUser');
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    const errorData = await response.json();
+                    debugLog('세션 생성 오류', errorData);
+                    throw new Error(errorData.detail || '세션 생성에 실패했습니다.');
+                }
+                
+                const sessionData = await response.json();
+                debugLog('생성된 세션', sessionData);
+                
+                // 성공 메시지 및 링크 표시
+                const patientLink = `${window.location.origin}/patient.html?session=${sessionData.session_id}`;
+                currentSessionLink = patientLink;
+                
+                document.getElementById('patient-link').textContent = patientLink;
+                document.getElementById('new-session-alert').style.display = 'block';
+                
+                // 폼 초기화
+                document.getElementById('patient-name').value = '';
+                
+                // 세션 목록 새로고침
+                await loadSessions();
+                
+            } catch (error) {
+                debugLog('세션 생성 오류', error.message);
+                alert('세션 생성 중 오류가 발생했습니다: ' + error.message);
+            }
+        }
+        
+        // 세션 목록 로드
+        async function loadSessions() {
+            debugLog('세션 목록 로드 시작');
+            document.getElementById('sessions-loading').style.display = 'block';
+            document.getElementById('sessions-table').style.display = 'none';
+            document.getElementById('no-sessions').style.display = 'none';
+            document.getElementById('pagination').style.display = 'none';
+            
+            try {
+                const url = `${API_BASE}/sct/sessions/by-user/${doctorId}`;
+                debugLog('API 요청 URL', url);
+                
+                const response = await fetch(url, {
+                    headers: getApiHeaders()
+                });
+                
+                debugLog('API 응답 상태', response.status);
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('currentUser');
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    const errorText = await response.text();
+                    debugLog('API 응답 오류', errorText);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                debugLog('받은 데이터', data);
+                
+                // 데이터 구조 확인 및 정규화
+                allSessions = Array.isArray(data) ? data : (data.sessions || []);
+                debugLog('처리된 세션 데이터', allSessions);
+                
+                // 초기 필터링 및 렌더링
+                applyFilters();
+                updateStats();
+                
+            } catch (error) {
+                debugLog('세션 로드 오류', error.message);
+                alert('세션 목록 로드 중 오류가 발생했습니다: ' + error.message);
+                
+                // 오류 발생 시 빈 배열로 초기화
+                allSessions = [];
+                filteredSessions = [];
+                updateStats();
+                renderSessionsTable();
+            } finally {
+                document.getElementById('sessions-loading').style.display = 'none';
+            }
+        }
+        
+        // 필터 적용
+        function applyFilters() {
+            const searchTerm = document.getElementById('search-patient').value.toLowerCase().trim();
+            const statusFilter = document.getElementById('status-filter').value;
+            const dateFrom = document.getElementById('date-from').value;
+            const dateTo = document.getElementById('date-to').value;
+            
+            debugLog('필터 적용', { searchTerm, statusFilter, dateFrom, dateTo });
+            
+            filteredSessions = allSessions.filter(session => {
+                // 환자명 검색
+                if (searchTerm) {
+                    const patientName = (session.patient_name || session.patientName || '').toLowerCase();
+                    if (!patientName.includes(searchTerm)) {
+                        return false;
+                    }
+                }
+                
+                // 상태 필터
+                if (statusFilter && session.status !== statusFilter) {
+                    return false;
+                }
+                
+                // 날짜 범위 필터
+                if (dateFrom || dateTo) {
+                    const sessionDate = new Date(session.created_at || session.createdAt);
+                    
+                    if (dateFrom) {
+                        const fromDate = new Date(dateFrom);
+                        if (sessionDate < fromDate) {
+                            return false;
+                        }
+                    }
+                    
+                    if (dateTo) {
+                        const toDate = new Date(dateTo);
+                        toDate.setHours(23, 59, 59, 999); // 하루 끝까지
+                        if (sessionDate > toDate) {
+                            return false;
+                        }
+                    }
+                }
+                
+                return true;
+            });
+            
+            debugLog('필터링 결과', `${filteredSessions.length}/${allSessions.length}`);
+            
+            // 페이징 초기화
+            currentPage = 1;
+            calculatePagination();
+            renderSessionsTable();
+            renderPagination();
+        }
+        
+        // 필터 초기화
+        function resetFilters() {
+            document.getElementById('search-patient').value = '';
+            document.getElementById('status-filter').value = '';
+            document.getElementById('date-from').value = '';
+            document.getElementById('date-to').value = '';
+            applyFilters();
+        }
+        
+        // 페이징 계산
+        function calculatePagination() {
+            totalPages = Math.ceil(filteredSessions.length / itemsPerPage);
+            if (totalPages === 0) totalPages = 1;
+            if (currentPage > totalPages) currentPage = totalPages;
+        }
+        
+        // 페이지 이동
+        function goToPage(page) {
+            if (page < 1 || page > totalPages) return;
+            currentPage = page;
+            renderSessionsTable();
+            renderPagination();
+        }
+        
+        // 페이징 UI 렌더링
+        function renderPagination() {
+            const pagination = document.getElementById('pagination');
+            const pageNumbers = document.getElementById('page-numbers');
+            const paginationInfo = document.getElementById('pagination-info');
+            
+            if (filteredSessions.length === 0) {
+                pagination.style.display = 'none';
+                paginationInfo.textContent = '0개 결과';
+                return;
+            }
+            
+            pagination.style.display = 'flex';
+            
+            // 페이지 정보
+            const startItem = (currentPage - 1) * itemsPerPage + 1;
+            const endItem = Math.min(currentPage * itemsPerPage, filteredSessions.length);
+            paginationInfo.textContent = `${startItem}-${endItem} / 총 ${filteredSessions.length}개`;
+            
+            // 이전/다음 버튼 상태
+            document.getElementById('first-page').disabled = currentPage === 1;
+            document.getElementById('prev-page').disabled = currentPage === 1;
+            document.getElementById('next-page').disabled = currentPage === totalPages;
+            document.getElementById('last-page').disabled = currentPage === totalPages;
+            
+            // 페이지 번호 버튼
+            pageNumbers.innerHTML = '';
+            const maxVisiblePages = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
+            let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
+            
+            if (endPage - startPage + 1 < maxVisiblePages) {
+                startPage = Math.max(1, endPage - maxVisiblePages + 1);
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                const button = document.createElement('button');
+                button.textContent = i;
+                button.onclick = () => goToPage(i);
+                if (i === currentPage) {
+                    button.classList.add('active');
+                }
+                pageNumbers.appendChild(button);
+            }
+        }
+        
+        // 통계 업데이트
+        function updateStats() {
+            debugLog('통계 업데이트', allSessions);
+            
+            const total = allSessions ? allSessions.length : 0;
+            const completed = allSessions ? allSessions.filter(s => s.status === 'complete').length : 0;
+            const pending = allSessions ? allSessions.filter(s => s.status === 'incomplete').length : 0;
+            const expired = allSessions ? allSessions.filter(s => s.status === 'expired').length : 0;
+            
+            debugLog('통계 결과', { total, completed, pending, expired });
+            
+            document.getElementById('total-sessions').textContent = total;
+            document.getElementById('completed-sessions').textContent = completed;
+            document.getElementById('pending-sessions').textContent = pending;
+            document.getElementById('expired-sessions').textContent = expired;
+        }
+        
+        // 세션 테이블 렌더링
+        function renderSessionsTable() {
+            debugLog('테이블 렌더링 시작', `필터링된 세션 수: ${filteredSessions.length}`);
+            const tbody = document.getElementById('sessions-tbody');
+            tbody.innerHTML = '';
+            
+            if (!filteredSessions || filteredSessions.length === 0) {
+                document.getElementById('no-sessions').style.display = 'block';
+                document.getElementById('sessions-table').style.display = 'none';
+                debugLog('필터링된 세션이 없음');
+                return;
+            }
+            
+            document.getElementById('sessions-table').style.display = 'table';
+            document.getElementById('no-sessions').style.display = 'none';
+            
+            // 페이징 적용
+            const startIndex = (currentPage - 1) * itemsPerPage;
+            const endIndex = startIndex + itemsPerPage;
+            const currentPageSessions = filteredSessions.slice(startIndex, endIndex);
+            
+            currentPageSessions.forEach((session, index) => {
+                debugLog(`세션 ${startIndex + index + 1} 처리`, session);
+                
+                const row = document.createElement('tr');
+                
+                // 안전한 데이터 추출
+                let patientName = 'UNKNOWN';
+                
+                if (session.patient_name && session.patient_name.trim() !== '') {
+                    patientName = session.patient_name.trim();
+                } else if (session.patientName && session.patientName.trim() !== '') {
+                    patientName = session.patientName.trim();
+                } else {
+                    console.warn('❌ 환자 이름을 찾을 수 없음, 세션 전체:', session);
+                    patientName = 'NO_NAME_FOUND';
+                }
+                
+                const sessionId = session.session_id || session.sessionId || 'Unknown';
+                const status = session.status || 'unknown';
+                
+                // 날짜 포맷팅 (KST 기준)
+                const createdAt = formatDate(session.created_at || session.createdAt);
+                const submittedAt = formatDate(session.submitted_at || session.submittedAt);
+                const expiresAt = formatDate(session.expires_at || session.expiresAt);
+                
+                // 상태 뱃지
+                const { statusClass, statusText } = getStatusInfo(status);
+                
+                // 작업 버튼들
+                const actionButtons = generateActionButtons(session, sessionId);
+                
+                row.innerHTML = `
+                    <td>${patientName}</td>
+                    <td>${createdAt}</td>
+                    <td>${submittedAt}</td>
+                    <td>${expiresAt}</td>
+                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
+                    <td>
+                        <div class="action-buttons">
+                            ${actionButtons}
+                        </div>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+            
+            debugLog('테이블 렌더링 완료');
+        }
+        
+        // 안전한 날짜 포맷팅 함수 (KST 기준)
+        function formatDate(dateString) {
+            if (!dateString) {
+                return '-';
+            }
+            
+            try {
+                const date = new Date(dateString);
+                
+                if (isNaN(date.getTime())) {
+                    debugLog('잘못된 날짜 형식', dateString);
+                    return 'Invalid Date';
+                }
+                
+                return date.toLocaleDateString('ko-KR', {
+                    year: 'numeric',
+                    month: '2-digit',
+                    day: '2-digit',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    timeZone: 'Asia/Seoul'
+                });
+                
+            } catch (error) {
+                debugLog('날짜 포맷팅 오류', { error: error.message, original: dateString });
+                return 'Format Error';
+            }
+        }
+        
+        // 상태 정보 반환
+        function getStatusInfo(status) {
+            let statusClass = '';
+            let statusText = '';
+            
+            switch (status) {
+                case 'incomplete':
+                    statusClass = 'status-incomplete';
+                    statusText = '대기중';
+                    break;
+                case 'complete':
+                    statusClass = 'status-complete';
+                    statusText = '완료';
+                    break;
+                case 'expired':
+                    statusClass = 'status-expired';
+                    statusText = '만료';
+                    break;
+                default:
+                    statusClass = 'status-incomplete';
+                    statusText = '알 수 없음';
+            }
+            
+            return { statusClass, statusText };
+        }
+        
+        // 작업 버튼 생성
+        function generateActionButtons(session, sessionId) {
+            const status = session.status || 'incomplete';
+            let actionButtons = '';
+            
+            if (status === 'incomplete') {
+                const patientLink = `${window.location.origin}/patient.html?session=${sessionId}`;
+                actionButtons = `
+                    <button onclick="copySessionLink('${patientLink}')" class="action-button copy">링크 복사</button>
+                    <button onclick="deleteSession('${sessionId}')" class="action-button delete">삭제</button>
+                `;
+            } else if (status === 'complete') {
+                actionButtons = `
+                    <button onclick="openAnalysisModal('${sessionId}')" class="action-button interpret">📊 전문 해석</button>
+                    <button onclick="deleteSession('${sessionId}')" class="action-button delete">삭제</button>
+                `;
+            } else {
+                actionButtons = `
+                    <button onclick="deleteSession('${sessionId}')" class="action-button delete">삭제</button>
+                `;
+            }
+            
+            return actionButtons;
+        }
+        
+        // 세션 삭제
+        async function deleteSession(sessionId) {
+            const session = allSessions.find(s => s.session_id === sessionId);
+            const patientName = session ? (session.patient_name || session.patientName || 'Unknown') : 'Unknown';
+            
+            if (!confirm(`정말로 "${patientName}"의 검사 세션을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) {
+                return;
+            }
+            
+            try {
+                debugLog('세션 삭제 시도', sessionId);
+                
+                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}`, {
+                    method: 'DELETE',
+                    headers: getApiHeaders()
+                });
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('currentUser');
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    throw new Error('세션 삭제에 실패했습니다.');
+                }
+                
+                alert('세션이 성공적으로 삭제되었습니다.');
+                
+                // 세션 목록 새로고침
+                await loadSessions();
+                
+            } catch (error) {
+                debugLog('세션 삭제 오류', error.message);
+                alert('세션 삭제 중 오류가 발생했습니다: ' + error.message);
+            }
+        }
+        
+        // 링크 복사
+        function copyLink() {
+            navigator.clipboard.writeText(currentSessionLink).then(() => {
+                alert('링크가 클립보드에 복사되었습니다!');
+            });
+        }
+        
+        // 세션 링크 복사
+        function copySessionLink(link) {
+            navigator.clipboard.writeText(link).then(() => {
+                alert('검사 링크가 클립보드에 복사되었습니다!');
+            });
+        }
+        
+        // 카카오톡 전송
+        function sendKakaoLink() {
+            alert('카카오톡 전송 기능은 추후 구현 예정입니다.\n현재는 링크를 복사해서 직접 전송해주세요.');
+        }
+        
+        // 세션 목록 새로고침
+        function refreshSessions() {
+            debugLog('세션 목록 새로고침 요청');
+            loadSessions();
+        }
+        
+        // 분석 모달 열기
+        async function openAnalysisModal(sessionId) {
+            debugLog('분석 모달 열기', sessionId);
+            currentSessionId = sessionId;
+            const modal = document.getElementById('interpretation-modal');
+            modal.style.display = 'block';
+            
+            // 첫 번째 탭 활성화
+            switchTab('interpretation');
+            
+            // 해석 자동 생성
+            await generateInterpretation(sessionId);
+        }
+        
+        // 탭 전환
+        function switchTab(tabName) {
+            debugLog('탭 전환', tabName);
+            
+            // 모든 탭 비활성화
+            document.querySelectorAll('.modal-tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // 선택된 탭 활성화
+            document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // 탭별 데이터 로드
+            if (tabName === 'analysis' && currentSessionId) {
+                loadCategoricalAnalysis(currentSessionId);
+            } else if (tabName === 'responses' && currentSessionId) {
+                loadAllResponses(currentSessionId);
+            }
+        }
+        
+        // 전문 해석 생성
+        async function generateInterpretation(sessionId) {
+            debugLog('전문 해석 생성 시작', sessionId);
+            
+            const loading = document.getElementById('interpretation-loading');
+            const content = document.getElementById('interpretation-content');
+            const actions = document.getElementById('interpretation-actions');
+            
+            loading.style.display = 'block';
+            content.innerHTML = '';
+            actions.style.display = 'none';
+            
+            try {
+                // 먼저 기존 해석이 있는지 확인
+                let interpretationResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpretation`, {
+                    headers: getApiHeaders()
+                });
+                
+                debugLog('해석 조회 응답', interpretationResponse.status);
+                
+                if (interpretationResponse.status === 404) {
+                    debugLog('해석이 없음, 새로 생성');
+                    // 해석이 없으면 새로 생성
+                    const generateResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpret`, {
+                        method: 'POST',
+                        headers: getApiHeaders()
+                    });
+                    
+                    debugLog('해석 생성 응답', generateResponse.status);
+                    
+                    if (!generateResponse.ok) {
+                        const errorData = await generateResponse.json();
+                        throw new Error(errorData.detail || '해석 생성에 실패했습니다.');
+                    }
+                    
+                    // 생성된 해석 가져오기
+                    interpretationResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpretation`, {
+                        headers: getApiHeaders()
+                    });
+                }
+                
+                if (!interpretationResponse.ok) {
+                    if (interpretationResponse.status === 401) {
+                        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('currentUser');
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    throw new Error('해석 결과를 불러올 수 없습니다.');
+                }
+                
+                const data = await interpretationResponse.json();
+                debugLog('해석 데이터 수신', data);
+                
+                currentInterpretation = data.interpretation;
+                
+                loading.style.display = 'none';
+                
+                // 마크다운 스타일 해석 결과 표시
+                content.innerHTML = formatInterpretation(data.interpretation, data.patient_name);
+                actions.style.display = 'block';
+                
+            } catch (error) {
+                debugLog('해석 생성 오류', error.message);
+                loading.style.display = 'none';
+                content.innerHTML = `
+                    <div class="alert alert-error">
+                        <strong>❌ 오류가 발생했습니다</strong><br>
+                        ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // 해석 결과 포맷팅
+        function formatInterpretation(interpretation, patientName) {
+            let formatted = interpretation
+                .replace(/^# /gm, '<h1>')
+                .replace(/^## /gm, '<h2>')
+                .replace(/^### /gm, '<h3>')
+                .replace(/\n/g, '<br>')
+                .replace(/<h([123])>([^<]*)<br>/g, '<h$1>$2</h$1>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>');
+            
+            return `
+                <div style="margin-bottom: 20px; padding: 15px; background: #ebf8ff; border-radius: 8px; border-left: 4px solid #4299e1;">
+                    <h3 style="margin: 0; color: #2b6cb0;">환자: ${patientName}</h3>
+                    <p style="margin: 5px 0 0 0; color: #2c5282;">해석 생성일: ${new Date().toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'})}</p>
+                </div>
+                ${formatted}
+            `;
+        }
+        
+        // 카테고리별 분석 로드
+        async function loadCategoricalAnalysis(sessionId) {
+            debugLog('카테고리별 분석 로드', sessionId);
+            
+            const loading = document.getElementById('analysis-loading');
+            const content = document.getElementById('analysis-content');
+            
+            loading.style.display = 'block';
+            content.innerHTML = '';
+            
+            try {
+                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/analysis`);
+                
+                if (!response.ok) {
+                    throw new Error('카테고리 분석을 불러올 수 없습니다.');
+                }
+                
+                const data = await response.json();
+                debugLog('카테고리 분석 데이터', data);
+                
+                loading.style.display = 'none';
+                
+                // 카테고리별 응답 표시
+                let html = '';
+                const categoryNames = {
+                    '가족관계': '👨‍👩‍👧‍👦 가족 관계',
+                    '대인관계': '🤝 대인 관계',
+                    '자아개념': '🪞 자아 개념',
+                    '정서조절': '💭 정서 조절',
+                    '성_결혼관': '💕 성 및 결혼관',
+                    '미래전망': '🔮 미래 전망',
+                    '과거경험': '📖 과거 경험',
+                    '현실적응': '🌍 현실 적응',
+                    '성격특성': '⭐ 성격 특성'
+                };
+                
+                for (const [category, responses] of Object.entries(data.categorized_responses)) {
+                    if (responses.length > 0) {
+                        html += `
+                            <div class="category-section">
+                                <div class="category-title">${categoryNames[category] || category}</div>
+                        `;
+                        
+                        responses.forEach(response => {
+                            html += `
+                                <div class="response-item">
+                                    <div class="response-stem">${response.item_no}. ${response.stem}</div>
+                                    <div class="response-answer">→ ${response.answer}</div>
+                                </div>
+                            `;
+                        });
+                        
+                        html += '</div>';
+                    }
+                }
+                
+                content.innerHTML = html;
+                
+            } catch (error) {
+                debugLog('카테고리 분석 로드 오류', error.message);
+                loading.style.display = 'none';
+                content.innerHTML = `
+                    <div class="alert alert-error">
+                        오류: ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // 전체 응답 로드
+        async function loadAllResponses(sessionId) {
+            debugLog('전체 응답 로드', sessionId);
+            
+            const content = document.getElementById('responses-content');
+            
+            try {
+                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}`);
+                
+                if (!response.ok) {
+                    throw new Error('세션 정보를 불러올 수 없습니다.');
+                }
+                
+                const data = await response.json();
+                debugLog('전체 응답 데이터', data);
+                
+                let html = '<div style="max-height: 500px; overflow-y: auto;">';
+                
+                if (data.responses && data.responses.length > 0) {
+                    data.responses.forEach(response => {
+                        html += `
+                            <div class="response-item">
+                                <div class="response-stem">${response.item_no}. ${response.stem}</div>
+                                <div class="response-answer">→ ${response.answer}</div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<p>응답 데이터가 없습니다.</p>';
+                }
+                
+                html += '</div>';
+                content.innerHTML = html;
+                
+            } catch (error) {
+                debugLog('전체 응답 로드 오류', error.message);
+                content.innerHTML = `
+                    <div class="alert alert-error">
+                        오류: ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        // PDF 해석 보고서 다운로드 (브라우저 인쇄 기능 활용)
+        async function downloadInterpretationPDF() {
+            if (!currentInterpretation) {
+                alert('다운로드할 해석 결과가 없습니다.');
+                return;
+            }
+            
+            // 브라우저 인쇄 대화상자 안내
+            const userChoice = confirm(
+                '한글이 포함된 PDF를 생성합니다.\n\n' +
+                '가장 안전한 방법:\n' +
+                '• "확인"을 누르면 인쇄 대화상자가 열립니다\n' +
+                '• "대상"에서 "PDF로 저장"을 선택하세요\n' +
+                '• 한글이 깨지지 않는 완벽한 PDF가 생성됩니다\n\n' +
+                '계속하시겠습니까?'
+            );
+            
+            if (!userChoice) {
+                // 사용자가 취소하면 텍스트 다운로드 제안
+                const textChoice = confirm('텍스트 파일로 다운로드하시겠습니까?');
+                if (textChoice) {
+                    downloadInterpretation();
+                }
+                return;
+            }
+            
+            // 인쇄용 페이지 생성 및 열기
+            openPrintPage();
+        }
+
+        function openPrintPage() {
+            const sessionData = allSessions.find(s => s.session_id === currentSessionId);
+            const patientName = sessionData ? (sessionData.patient_name || sessionData.patientName) : '환자';
+            
+            // 새 창에서 인쇄 전용 페이지 생성
+            const printWindow = window.open('', '_blank', 'width=800,height=900');
+            
+            // HTML을 깔끔한 텍스트로 변환
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = currentInterpretation;
+            const cleanText = tempDiv.textContent || tempDiv.innerText || '';
+            
+            printWindow.document.write(`
+        <!DOCTYPE html>
+        <html lang="ko">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>SCT 해석보고서 - ${patientName}</title>
+            <style>
+                @page {
+                    size: A4;
+                    margin: 2.5cm;
+                }
+                
+                * {
+                    margin: 0;
+                    padding: 0;
+                    box-sizing: border-box;
+                }
+                
+                body {
+                    font-family: '맑은 고딕', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+                    line-height: 1.7;
+                    color: #2d3748;
+                    font-size: 11px;
+                    background: white;
+                }
+                
+                .header {
+                    text-align: center;
+                    border-bottom: 3px solid #4299e1;
+                    padding-bottom: 25px;
+                    margin-bottom: 35px;
+                    background: linear-gradient(135deg, #f7fafc 0%, #ebf8ff 100%);
+                    padding: 30px;
+                    border-radius: 10px;
+                }
+                
+                .header h1 {
+                    font-size: 28px;
+                    color: #2b6cb0;
+                    margin-bottom: 10px;
+                    font-weight: bold;
+                    letter-spacing: 2px;
+                }
+                
+                .header p {
+                    font-size: 16px;
+                    color: #4a5568;
+                    margin: 5px 0;
+                }
+                
+                .patient-info {
+                    background: #f8f9fa;
+                    padding: 20px;
+                    border-radius: 8px;
+                    margin-bottom: 25px;
+                    border-left: 5px solid #4299e1;
+                }
+                
+                .patient-info h3 {
+                    color: #2b6cb0;
+                    margin-bottom: 15px;
+                    font-size: 16px;
+                }
+                
+                .patient-info p {
+                    margin: 8px 0;
+                    font-size: 12px;
+                }
+                
+                .patient-info strong {
+                    color: #2d3748;
+                    font-weight: 600;
+                }
+                
+                .content {
+                    margin-bottom: 30px;
+                }
+                
+                .content h1 {
+                    font-size: 20px;
+                    color: #2d3748;
+                    margin: 25px 0 15px 0;
+                    border-bottom: 2px solid #4299e1;
+                    padding-bottom: 8px;
+                    font-weight: bold;
+                }
+                
+                .content h2 {
+                    font-size: 16px;
+                    color: #4299e1;
+                    margin: 20px 0 10px 0;
+                    background: #f7fafc;
+                    padding: 8px 12px;
+                    border-radius: 5px;
+                    font-weight: 600;
+                }
+                
+                .content h3 {
+                    font-size: 14px;
+                    color: #667eea;
+                    margin: 15px 0 8px 0;
+                    font-weight: 600;
+                }
+                
+                .content p {
+                    margin: 8px 0;
+                    text-align: justify;
+                    line-height: 1.6;
+                }
+                
+                .content strong {
+                    color: #2d3748;
+                    font-weight: 600;
+                }
+                
+                .disclaimer {
+                    background: #fff3cd;
+                    border: 2px solid #ffd700;
+                    padding: 20px;
+                    margin-top: 30px;
+                    border-radius: 8px;
+                    page-break-inside: avoid;
+                }
+                
+                .disclaimer h4 {
+                    color: #c53030;
+                    margin-bottom: 15px;
+                    font-size: 14px;
+                    font-weight: bold;
+                }
+                
+                .disclaimer ul {
+                    margin: 0;
+                    padding-left: 20px;
+                    font-size: 10px;
+                    line-height: 1.5;
+                }
+                
+                .disclaimer li {
+                    margin-bottom: 8px;
+                }
+                
+                .footer {
+                    text-align: center;
+                    margin-top: 40px;
+                    padding-top: 20px;
+                    border-top: 2px solid #e2e8f0;
+                    font-size: 10px;
+                    color: #718096;
+                }
+                
+                .print-instructions {
+                    background: #e6fffa;
+                    border: 2px solid #38b2ac;
+                    padding: 20px;
+                    margin: 20px 0;
+                    border-radius: 8px;
+                    text-align: center;
+                }
+                
+                .print-instructions h3 {
+                    color: #2c7a7b;
+                    margin-bottom: 10px;
+                }
+                
+                .print-instructions p {
+                    margin: 5px 0;
+                    font-size: 12px;
+                }
+                
+                .print-button {
+                    background: #4299e1;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 6px;
+                    font-size: 14px;
+                    cursor: pointer;
+                    margin: 10px;
+                    font-weight: 600;
+                }
+                
+                .print-button:hover {
+                    background: #3182ce;
+                }
+                
+                @media print {
+                    .no-print {
+                        display: none !important;
+                    }
+                    
+                    body {
+                        font-size: 10px;
+                    }
+                    
+                    .print-instructions {
+                        display: none;
+                    }
+                }
+                
+                @media screen {
+                    body {
+                        max-width: 800px;
+                        margin: 20px auto;
+                        padding: 20px;
+                        box-shadow: 0 0 20px rgba(0,0,0,0.1);
+                        border-radius: 10px;
+                    }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="print-instructions no-print">
+                <h3>📄 PDF 저장 방법</h3>
+                <p><strong>1단계:</strong> 아래 "인쇄하기" 버튼을 클릭</p>
+                <p><strong>2단계:</strong> 프린터 대상을 "PDF로 저장" 선택</p>
+                <p><strong>3단계:</strong> "저장" 클릭하여 완벽한 한글 PDF 생성</p>
+                <button class="print-button" onclick="window.print()">🖨️ 인쇄하기 (PDF 저장)</button>
+                <button class="print-button" onclick="window.close()" style="background: #6c757d;">❌ 닫기</button>
+            </div>
+
+            <div class="header">
+                <h1>SCT 검사 해석 보고서</h1>
+                <p>🏥 전문 심리검사 시스템</p>
+                <p>Sentence Completion Test Analysis Report</p>
+            </div>
+            
+            <div class="patient-info">
+                <h3>📋 환자 정보</h3>
+                <p><strong>환자명:</strong> ${patientName}</p>
+                <p><strong>해석 생성일:</strong> ${new Date().toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'})}</p>
+                <p><strong>세션 ID:</strong> ${currentSessionId}</p>
+                <p><strong>검사 유형:</strong> SCT (문장완성검사)</p>
+            </div>
+            
+            <div class="content">
+                ${formatContentForPrint(cleanText)}
+            </div>
+            
+            <div class="disclaimer">
+                <h4>⚠️ 중요한 면책조항</h4>
+                <ul>
+                    <li>본 보고서는 AI 기반 자동 해석 시스템에 의해 생성되었습니다.</li>
+                    <li>임상적 판단은 반드시 자격을 갖춘 정신건강 전문의의 검토를 거쳐 최종 확정되어야 합니다.</li>
+                    <li>본 해석은 참고 자료로만 활용되어야 하며, 단독으로 진단이나 치료 결정의 근거가 될 수 없습니다.</li>
+                    <li>환자의 전체적인 임상 상황과 다른 검사 결과들을 종합하여 해석해야 합니다.</li>
+                    <li>본 시스템은 정신건강의학과 전문의의 임상적 판단을 보조하는 도구입니다.</li>
+                </ul>
+            </div>
+            
+            <div class="footer">
+                <p><strong>Generated by SCT Analysis System</strong></p>
+                <p>© 2024 Professional Mental Health Assessment Platform</p>
+                <p>이 문서는 의료진 전용이며 환자 개인정보보호법에 따라 보호됩니다.</p>
+            </div>
+        </body>
+        </html>
+            `);
+            
+            printWindow.document.close();
+            
+            // 페이지 로딩 후 자동으로 인쇄 대화상자 열기
+            printWindow.onload = function() {
+                setTimeout(() => {
+                    printWindow.focus();
+                }, 500);
+            };
+        }
+
+        // 텍스트 포맷팅 함수
+        function formatContentForPrint(text) {
+            const paragraphs = text.split('\n').filter(p => p.trim());
+            let formattedContent = '';
+            
+            paragraphs.forEach(paragraph => {
+                const trimmed = paragraph.trim();
+                if (trimmed.startsWith('# ')) {
+                    formattedContent += `<h1>${trimmed.substring(2)}</h1>`;
+                } else if (trimmed.startsWith('## ')) {
+                    formattedContent += `<h2>${trimmed.substring(3)}</h2>`;
+                } else if (trimmed.startsWith('### ')) {
+                    formattedContent += `<h3>${trimmed.substring(4)}</h3>`;
+                } else if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
+                    formattedContent += `<p><strong>${trimmed.slice(2, -2)}</strong></p>`;
+                } else if (trimmed.length > 0) {
+                    formattedContent += `<p>${trimmed}</p>`;
+                }
+            });
+            
+            return formattedContent;
+        }
+        
+        // 텍스트 해석 보고서 다운로드
+        function downloadInterpretation() {
+            if (!currentInterpretation) {
+                alert('다운로드할 해석 결과가 없습니다.');
+                return;
+            }
+            
+            const sessionData = allSessions.find(s => s.session_id === currentSessionId);
+            const patientName = sessionData ? (sessionData.patient_name || sessionData.patientName) : '환자';
+            const today = new Date().toISOString().split('T')[0];
+            
+            // HTML을 텍스트로 변환
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = currentInterpretation;
+            const textContent = tempDiv.textContent || tempDiv.innerText || '';
+            
+            const content = `SCT (문장완성검사) 해석 보고서
+=====================================
+
+환자명: ${patientName}
+해석 생성일: ${new Date().toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'})}
+세션 ID: ${currentSessionId}
+검사 유형: SCT (Sentence Completion Test)
+
+=====================================
+
+${textContent}
+
+=====================================
+면책조항:
+- 본 보고서는 AI 기반 자동 해석 시스템에 의해 생성되었습니다.
+- 임상적 판단은 반드시 자격을 갖춘 정신건강 전문의의 검토를 거쳐 최종 확정되어야 합니다.
+- 본 해석은 참고 자료로만 활용되어야 하며, 단독으로 진단이나 치료 결정의 근거가 될 수 없습니다.
+- 환자의 전체적인 임상 상황과 다른 검사 결과들을 종합하여 해석해야 합니다.
+
+© 2024 SCT Analysis System - Professional Mental Health Assessment Platform
+`;
+            
+            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `SCT_해석보고서_${patientName}_${today}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+        
+        // 해석 모달 닫기
+        function closeInterpretationModal() {
+            document.getElementById('interpretation-modal').style.display = 'none';
+            currentSessionId = '';
+            currentInterpretation = '';
+        }
+        
+        // 모달 외부 클릭 시 닫기
+        window.onclick = function(event) {
+            const modal = document.getElementById('interpretation-modal');
+            if (event.target === modal) {
+                modal.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html><!DOCTYPE html>
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
@@ -632,1461 +1975,4 @@
         <div class="card">
             <h2>🆕 새 SCT 검사 생성</h2>
             <form id="create-session-form">
-                <div class="form-group">
-                    <label for="patient-name">환자 이름</label>
-                    <input type="text" id="patient-name" class="form-input" placeholder="환자 이름을 입력하세요" required>
-                </div>
-                <button type="submit" class="button">검사 세션 생성</button>
-            </form>
-            
-            <div id="new-session-alert" class="alert alert-success" style="display: none;">
-                <strong>✅ 새 검사가 생성되었습니다!</strong>
-                <div class="link-display" style="display: block;">
-                    <p><strong>환자에게 전달할 검사 링크:</strong></p>
-                    <div class="link-text" id="patient-link"></div>
-                    <div style="display: flex; gap: 10px;">
-                        <button onclick="copyLink()" class="button button-secondary">📋 링크 복사</button>
-                        <button onclick="sendKakaoLink()" class="button">💬 카카오톡 전송</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-        
-        <!-- 검사 목록 -->
-        <div class="card">
-            <h2>📋 검사 세션 목록</h2>
-            
-            <!-- 검색 및 필터 컨트롤 -->
-            <div class="search-controls">
-                <input type="text" class="search-input" id="search-patient" placeholder="🔍 환자 이름으로 검색...">
-                <select class="filter-select" id="status-filter">
-                    <option value="">전체 상태</option>
-                    <option value="complete">완료</option>
-                    <option value="incomplete">대기중</option>
-                    <option value="expired">만료</option>
-                </select>
-                <input type="date" class="search-input" id="date-from" title="시작일">
-                <input type="date" class="search-input" id="date-to" title="종료일">
-                <button onclick="resetFilters()" class="button button-secondary">🔄 초기화</button>
-            </div>
-            
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                <button onclick="refreshSessions()" class="button button-secondary">🔄 새로고침</button>
-                <div class="pagination-info" id="pagination-info">0개 결과</div>
-            </div>
-            
-            <div id="sessions-loading" class="loading" style="display: none;">
-                검사 목록을 불러오는 중...
-            </div>
-            
-            <table class="sessions-table" id="sessions-table" style="display: none;">
-                <thead>
-                    <tr>
-                        <th>환자명</th>
-                        <th>생성일</th>
-                        <th>제출일</th>
-                        <th>만료일</th>
-                        <th>상태</th>
-                        <th>작업</th>
-                    </tr>
-                </thead>
-                <tbody id="sessions-tbody">
-                </tbody>
-            </table>
-            
-            <!-- 페이징 -->
-            <div class="pagination" id="pagination" style="display: none;">
-                <button onclick="goToPage(1)" id="first-page"><<</button>
-                <button onclick="goToPage(currentPage - 1)" id="prev-page"><</button>
-                <div id="page-numbers"></div>
-                <button onclick="goToPage(currentPage + 1)" id="next-page">></button>
-                <button onclick="goToPage(totalPages)" id="last-page">>></button>
-            </div>
-            
-            <div id="no-sessions" style="display: none; text-align: center; color: #718096; padding: 40px;">
-                검색 조건에 맞는 검사 세션이 없습니다.
-            </div>
-        </div>
-    </div>
-    
-    <!-- 해석 결과 모달 -->
-    <div id="interpretation-modal" class="modal">
-        <div class="modal-content">
-            <span class="close" onclick="closeInterpretationModal()">&times;</span>
-            <h2>📊 SCT 검사 결과 분석</h2>
-            
-            <div class="modal-tabs">
-                <button class="modal-tab active" onclick="switchTab('interpretation')">📋 임상 해석</button>
-                <button class="modal-tab" onclick="switchTab('analysis')">📈 카테고리 분석</button>
-                <button class="modal-tab" onclick="switchTab('responses')">📝 전체 응답</button>
-            </div>
-            
-            <!-- 해석 탭 -->
-            <div id="interpretation-tab" class="tab-content active">
-                <div id="interpretation-loading" class="loading" style="display: none;">
-                    <div class="loading-spinner"></div>
-                    <p><strong>전문적인 임상 해석을 생성하는 중입니다...</strong></p>
-                    <p>숙련된 정신과 의사 수준의 분석을 위해 최대 60초가 소요될 수 있습니다.</p>
-                </div>
-                <div id="interpretation-content" class="interpretation-content"></div>
-                <div id="interpretation-actions" style="display: none; margin-top: 20px; text-align: center;">
-                    <button onclick="downloadInterpretationPDF()" class="button pdf-button">📄 PDF 보고서 다운로드</button>
-                    <button onclick="downloadInterpretation()" class="button button-secondary" style="margin-left: 10px;">📝 텍스트 다운로드</button>
-                </div>
-            </div>
-            
-            <!-- 카테고리 분석 탭 -->
-            <div id="analysis-tab" class="tab-content">
-                <div id="analysis-loading" class="loading" style="display: none;">
-                    <div class="loading-spinner"></div>
-                    <p>카테고리별 분석을 준비하는 중...</p>
-                </div>
-                <div id="analysis-content"></div>
-            </div>
-            
-            <!-- 전체 응답 탭 -->
-            <div id="responses-tab" class="tab-content">
-                <div id="responses-content"></div>
-            </div>
-        </div>
-    </div>
-
-    <script>
-        // 전역 변수
-        const API_BASE = 'https://sct-backend-7epf.onrender.com';
-            // 👇 바로 여기에 함수 추가!
-        async function safeApiCall(url, options = {}) {
-            try {
-                console.log('API 호출 시도:', url);
-                
-                const response = await fetch(url, {
-                    ...options,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...options.headers
-                    }
-                });
-                
-                console.log('응답 받음:', response.status);
-                
-                if (!response.ok) {
-                    throw new Error(`서버 오류: ${response.status}`);
-                }
-                
-                return await response.json();
-            } catch (error) {
-                console.error('API 오류:', error);
-                alert('서버 연결에 문제가 있습니다. 잠시 후 다시 시도해주세요.');
-                throw error;
-            }
-        }
-        let doctorId = '';
-        let doctorName = '';
-        let allSessions = []; // 전체 세션 데이터
-        let filteredSessions = []; // 필터링된 세션 데이터
-        let currentSessionLink = '';
-        let currentSessionId = '';
-        let currentInterpretation = '';
-        let debugMode = false;
-        
-        // 페이징 관련 변수
-        let currentPage = 1;
-        let itemsPerPage = 10;
-        let totalPages = 1;
-        
-        // 디버그 함수
-        function debugLog(message, data = null) {
-            const timestamp = new Date().toLocaleTimeString();
-            const logMessage = `[${timestamp}] ${message}`;
-            console.log(logMessage, data || '');
-            
-            if (debugMode) {
-                const debugContent = document.getElementById('debug-content');
-                const logEntry = document.createElement('div');
-                logEntry.innerHTML = `${logMessage}${data ? ': ' + JSON.stringify(data, null, 2) : ''}`;
-                debugContent.appendChild(logEntry);
-                debugContent.scrollTop = debugContent.scrollHeight;
-            }
-        }
-        
-        function toggleDebug() {
-            debugMode = !debugMode;
-            const debugInfo = document.getElementById('debug-info');
-            debugInfo.style.display = debugMode ? 'block' : 'none';
-            
-            if (debugMode) {
-                document.getElementById('debug-content').innerHTML = '';
-                debugLog('디버그 모드 활성화');
-                debugLog('현재 API_BASE', API_BASE);
-                debugLog('현재 doctorId', doctorId);
-                debugLog('현재 sessions 수', allSessions.length);
-            }
-        }
-        
-        // API 헤더 (JWT 토큰 포함)
-        function getApiHeaders() {
-            const token = localStorage.getItem('access_token');
-            return {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
-            };
-        }
-        
-        // 페이지 로드 시 실행
-        document.addEventListener('DOMContentLoaded', function() {
-            debugLog('페이지 로드 시작');
-            
-            // 로그인 확인
-            const currentUser = localStorage.getItem('currentUser');
-            if (!currentUser) {
-                alert('로그인이 필요합니다.');
-                window.location.href = 'login.html';
-                return;
-            }
-            
-            // 사용자 정보 설정
-            const userData = JSON.parse(currentUser);
-            doctorId = userData.doctorId;
-            doctorName = userData.name;
-            
-            debugLog('사용자 정보 로드', { doctorId, doctorName });
-            
-            document.getElementById('doctor-id').textContent = doctorId;
-            document.getElementById('doctor-name').textContent = doctorName;
-            
-            loadSessions();
-            setupEventListeners();
-        });
-        
-        // 이벤트 리스너 설정
-        function setupEventListeners() {
-            // 폼 제출 이벤트
-            document.getElementById('create-session-form').addEventListener('submit', createSession);
-            
-            // 검색 및 필터 이벤트
-            document.getElementById('search-patient').addEventListener('input', applyFilters);
-            document.getElementById('status-filter').addEventListener('change', applyFilters);
-            document.getElementById('date-from').addEventListener('change', applyFilters);
-            document.getElementById('date-to').addEventListener('change', applyFilters);
-        }
-        
-        // 로그아웃
-        function logout() {
-            if (confirm('정말 로그아웃 하시겠습니까?')) {
-                localStorage.removeItem('currentUser');
-                localStorage.removeItem('access_token');
-                window.location.href = 'login.html';
-            }
-        }
-        
-        // 새 세션 생성
-        async function createSession(event) {
-            event.preventDefault();
-            
-            const patientName = document.getElementById('patient-name').value.trim();
-            if (!patientName) {
-                alert('환자 이름을 입력해주세요.');
-                return;
-            }
-            
-            debugLog('새 세션 생성 시작', { patientName, doctorId });
-            
-            try {
-                const requestBody = {
-                    patient_name: patientName,
-                    assigned_by: doctorId
-                };
-                
-                debugLog('전송할 데이터', requestBody);
-                
-                const response = await fetch(`${API_BASE}/sct/sessions`, {
-                    method: 'POST',
-                    headers: getApiHeaders(),
-                    body: JSON.stringify(requestBody)
-                });
-                
-                debugLog('세션 생성 응답 상태', response.status);
-                
-                if (!response.ok) {
-                    if (response.status === 401) {
-                        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
-                        localStorage.removeItem('access_token');
-                        localStorage.removeItem('currentUser');
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    const errorData = await response.json();
-                    debugLog('세션 생성 오류', errorData);
-                    throw new Error(errorData.detail || '세션 생성에 실패했습니다.');
-                }
-                
-                const sessionData = await response.json();
-                debugLog('생성된 세션', sessionData);
-                
-                // 성공 메시지 및 링크 표시
-                const patientLink = `${window.location.origin}/patient.html?session=${sessionData.session_id}`;
-                currentSessionLink = patientLink;
-                
-                document.getElementById('patient-link').textContent = patientLink;
-                document.getElementById('new-session-alert').style.display = 'block';
-                
-                // 폼 초기화
-                document.getElementById('patient-name').value = '';
-                
-                // 세션 목록 새로고침
-                await loadSessions();
-                
-            } catch (error) {
-                debugLog('세션 생성 오류', error.message);
-                alert('세션 생성 중 오류가 발생했습니다: ' + error.message);
-            }
-        }
-        
-        // 세션 목록 로드
-        async function loadSessions() {
-            debugLog('세션 목록 로드 시작');
-            document.getElementById('sessions-loading').style.display = 'block';
-            document.getElementById('sessions-table').style.display = 'none';
-            document.getElementById('no-sessions').style.display = 'none';
-            document.getElementById('pagination').style.display = 'none';
-            
-            try {
-                const url = `${API_BASE}/sct/sessions/by-user/${doctorId}`;
-                debugLog('API 요청 URL', url);
-                
-                const response = await fetch(url, {
-                    headers: getApiHeaders()
-                });
-                
-                debugLog('API 응답 상태', response.status);
-                
-                if (!response.ok) {
-                    if (response.status === 401) {
-                        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
-                        localStorage.removeItem('access_token');
-                        localStorage.removeItem('currentUser');
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    const errorText = await response.text();
-                    debugLog('API 응답 오류', errorText);
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                }
-                
-                const data = await response.json();
-                debugLog('받은 데이터', data);
-                
-                // 데이터 구조 확인 및 정규화
-                allSessions = Array.isArray(data) ? data : (data.sessions || []);
-                debugLog('처리된 세션 데이터', allSessions);
-                
-                // 초기 필터링 및 렌더링
-                applyFilters();
-                updateStats();
-                
-            } catch (error) {
-                debugLog('세션 로드 오류', error.message);
-                alert('세션 목록 로드 중 오류가 발생했습니다: ' + error.message);
-                
-                // 오류 발생 시 빈 배열로 초기화
-                allSessions = [];
-                filteredSessions = [];
-                updateStats();
-                renderSessionsTable();
-            } finally {
-                document.getElementById('sessions-loading').style.display = 'none';
-            }
-        }
-        
-        // 필터 적용
-        function applyFilters() {
-            const searchTerm = document.getElementById('search-patient').value.toLowerCase().trim();
-            const statusFilter = document.getElementById('status-filter').value;
-            const dateFrom = document.getElementById('date-from').value;
-            const dateTo = document.getElementById('date-to').value;
-            
-            debugLog('필터 적용', { searchTerm, statusFilter, dateFrom, dateTo });
-            
-            filteredSessions = allSessions.filter(session => {
-                // 환자명 검색
-                if (searchTerm) {
-                    const patientName = (session.patient_name || session.patientName || '').toLowerCase();
-                    if (!patientName.includes(searchTerm)) {
-                        return false;
-                    }
-                }
-                
-                // 상태 필터
-                if (statusFilter && session.status !== statusFilter) {
-                    return false;
-                }
-                
-                // 날짜 범위 필터
-                if (dateFrom || dateTo) {
-                    const sessionDate = new Date(session.created_at || session.createdAt);
-                    
-                    if (dateFrom) {
-                        const fromDate = new Date(dateFrom);
-                        if (sessionDate < fromDate) {
-                            return false;
-                        }
-                    }
-                    
-                    if (dateTo) {
-                        const toDate = new Date(dateTo);
-                        toDate.setHours(23, 59, 59, 999); // 하루 끝까지
-                        if (sessionDate > toDate) {
-                            return false;
-                        }
-                    }
-                }
-                
-                return true;
-            });
-            
-            debugLog('필터링 결과', `${filteredSessions.length}/${allSessions.length}`);
-            
-            // 페이징 초기화
-            currentPage = 1;
-            calculatePagination();
-            renderSessionsTable();
-            renderPagination();
-        }
-        
-        // 필터 초기화
-        function resetFilters() {
-            document.getElementById('search-patient').value = '';
-            document.getElementById('status-filter').value = '';
-            document.getElementById('date-from').value = '';
-            document.getElementById('date-to').value = '';
-            applyFilters();
-        }
-        
-        // 페이징 계산
-        function calculatePagination() {
-            totalPages = Math.ceil(filteredSessions.length / itemsPerPage);
-            if (totalPages === 0) totalPages = 1;
-            if (currentPage > totalPages) currentPage = totalPages;
-        }
-        
-        // 페이지 이동
-        function goToPage(page) {
-            if (page < 1 || page > totalPages) return;
-            currentPage = page;
-            renderSessionsTable();
-            renderPagination();
-        }
-        
-        // 페이징 UI 렌더링
-        function renderPagination() {
-            const pagination = document.getElementById('pagination');
-            const pageNumbers = document.getElementById('page-numbers');
-            const paginationInfo = document.getElementById('pagination-info');
-            
-            if (filteredSessions.length === 0) {
-                pagination.style.display = 'none';
-                paginationInfo.textContent = '0개 결과';
-                return;
-            }
-            
-            pagination.style.display = 'flex';
-            
-            // 페이지 정보
-            const startItem = (currentPage - 1) * itemsPerPage + 1;
-            const endItem = Math.min(currentPage * itemsPerPage, filteredSessions.length);
-            paginationInfo.textContent = `${startItem}-${endItem} / 총 ${filteredSessions.length}개`;
-            
-            // 이전/다음 버튼 상태
-            document.getElementById('first-page').disabled = currentPage === 1;
-            document.getElementById('prev-page').disabled = currentPage === 1;
-            document.getElementById('next-page').disabled = currentPage === totalPages;
-            document.getElementById('last-page').disabled = currentPage === totalPages;
-            
-            // 페이지 번호 버튼
-            pageNumbers.innerHTML = '';
-            const maxVisiblePages = 5;
-            let startPage = Math.max(1, currentPage - Math.floor(maxVisiblePages / 2));
-            let endPage = Math.min(totalPages, startPage + maxVisiblePages - 1);
-            
-            if (endPage - startPage + 1 < maxVisiblePages) {
-                startPage = Math.max(1, endPage - maxVisiblePages + 1);
-            }
-            
-            for (let i = startPage; i <= endPage; i++) {
-                const button = document.createElement('button');
-                button.textContent = i;
-                button.onclick = () => goToPage(i);
-                if (i === currentPage) {
-                    button.classList.add('active');
-                }
-                pageNumbers.appendChild(button);
-            }
-        }
-        
-        // 통계 업데이트
-        function updateStats() {
-            debugLog('통계 업데이트', allSessions);
-            
-            const total = allSessions ? allSessions.length : 0;
-            const completed = allSessions ? allSessions.filter(s => s.status === 'complete').length : 0;
-            const pending = allSessions ? allSessions.filter(s => s.status === 'incomplete').length : 0;
-            const expired = allSessions ? allSessions.filter(s => s.status === 'expired').length : 0;
-            
-            debugLog('통계 결과', { total, completed, pending, expired });
-            
-            document.getElementById('total-sessions').textContent = total;
-            document.getElementById('completed-sessions').textContent = completed;
-            document.getElementById('pending-sessions').textContent = pending;
-            document.getElementById('expired-sessions').textContent = expired;
-        }
-        
-        // 세션 테이블 렌더링
-        function renderSessionsTable() {
-            debugLog('테이블 렌더링 시작', `필터링된 세션 수: ${filteredSessions.length}`);
-            const tbody = document.getElementById('sessions-tbody');
-            tbody.innerHTML = '';
-            
-            if (!filteredSessions || filteredSessions.length === 0) {
-                document.getElementById('no-sessions').style.display = 'block';
-                document.getElementById('sessions-table').style.display = 'none';
-                debugLog('필터링된 세션이 없음');
-                return;
-            }
-            
-            document.getElementById('sessions-table').style.display = 'table';
-            document.getElementById('no-sessions').style.display = 'none';
-            
-            // 페이징 적용
-            const startIndex = (currentPage - 1) * itemsPerPage;
-            const endIndex = startIndex + itemsPerPage;
-            const currentPageSessions = filteredSessions.slice(startIndex, endIndex);
-            
-            currentPageSessions.forEach((session, index) => {
-                debugLog(`세션 ${startIndex + index + 1} 처리`, session);
-                
-                const row = document.createElement('tr');
-                
-                // 안전한 데이터 추출
-                let patientName = 'UNKNOWN';
-                
-                if (session.patient_name && session.patient_name.trim() !== '') {
-                    patientName = session.patient_name.trim();
-                } else if (session.patientName && session.patientName.trim() !== '') {
-                    patientName = session.patientName.trim();
-                } else {
-                    console.warn('❌ 환자 이름을 찾을 수 없음, 세션 전체:', session);
-                    patientName = 'NO_NAME_FOUND';
-                }
-                
-                const sessionId = session.session_id || session.sessionId || 'Unknown';
-                const status = session.status || 'unknown';
-                
-                // 날짜 포맷팅
-                const createdAt = formatDate(session.created_at || session.createdAt);
-                const submittedAt = formatDate(session.submitted_at || session.submittedAt);
-                const expiresAt = formatDate(session.expires_at || session.expiresAt);
-                
-                // 상태 뱃지
-                const { statusClass, statusText } = getStatusInfo(status);
-                
-                // 작업 버튼들
-                const actionButtons = generateActionButtons(session, sessionId);
-                
-                row.innerHTML = `
-                    <td>${patientName}</td>
-                    <td>${createdAt}</td>
-                    <td>${submittedAt}</td>
-                    <td>${expiresAt}</td>
-                    <td><span class="status-badge ${statusClass}">${statusText}</span></td>
-                    <td>
-                        <div class="action-buttons">
-                            ${actionButtons}
-                        </div>
-                    </td>
-                `;
-                
-                tbody.appendChild(row);
-            });
-            
-            debugLog('테이블 렌더링 완료');
-        }
-        
-        // 안전한 날짜 포맷팅 함수
-        function formatDate(dateString) {
-            if (!dateString) {
-                return '-';
-            }
-            
-            try {
-                const date = new Date(dateString);
-                
-                if (isNaN(date.getTime())) {
-                    debugLog('잘못된 날짜 형식', dateString);
-                    return 'Invalid Date';
-                }
-                
-                return date.toLocaleDateString('ko-KR', {
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                });
-                
-            } catch (error) {
-                debugLog('날짜 포맷팅 오류', { error: error.message, original: dateString });
-                return 'Format Error';
-            }
-        }
-        
-        // 상태 정보 반환
-        function getStatusInfo(status) {
-            let statusClass = '';
-            let statusText = '';
-            
-            switch (status) {
-                case 'incomplete':
-                    statusClass = 'status-incomplete';
-                    statusText = '대기중';
-                    break;
-                case 'complete':
-                    statusClass = 'status-complete';
-                    statusText = '완료';
-                    break;
-                case 'expired':
-                    statusClass = 'status-expired';
-                    statusText = '만료';
-                    break;
-                default:
-                    statusClass = 'status-incomplete';
-                    statusText = '알 수 없음';
-            }
-            
-            return { statusClass, statusText };
-        }
-        
-        // 작업 버튼 생성
-        function generateActionButtons(session, sessionId) {
-            const status = session.status || 'incomplete';
-            let actionButtons = '';
-            
-            if (status === 'incomplete') {
-                const patientLink = `${window.location.origin}/patient.html?session=${sessionId}`;
-                actionButtons = `
-                    <button onclick="copySessionLink('${patientLink}')" class="action-button copy">링크 복사</button>
-                    <button onclick="deleteSession('${sessionId}')" class="action-button delete">삭제</button>
-                `;
-            } else if (status === 'complete') {
-                actionButtons = `
-                    <button onclick="openAnalysisModal('${sessionId}')" class="action-button interpret">📊 전문 해석</button>
-                    <button onclick="deleteSession('${sessionId}')" class="action-button delete">삭제</button>
-                `;
-            } else {
-                actionButtons = `
-                    <button onclick="deleteSession('${sessionId}')" class="action-button delete">삭제</button>
-                `;
-            }
-            
-            return actionButtons;
-        }
-        
-        // 세션 삭제
-        async function deleteSession(sessionId) {
-            const session = allSessions.find(s => s.session_id === sessionId);
-            const patientName = session ? (session.patient_name || session.patientName || 'Unknown') : 'Unknown';
-            
-            if (!confirm(`정말로 "${patientName}"의 검사 세션을 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) {
-                return;
-            }
-            
-            try {
-                debugLog('세션 삭제 시도', sessionId);
-                
-                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}`, {
-                    method: 'DELETE',
-                    headers: getApiHeaders()
-                });
-                
-                if (!response.ok) {
-                    if (response.status === 401) {
-                        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
-                        localStorage.removeItem('access_token');
-                        localStorage.removeItem('currentUser');
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    throw new Error('세션 삭제에 실패했습니다.');
-                }
-                
-                alert('세션이 성공적으로 삭제되었습니다.');
-                
-                // 세션 목록 새로고침
-                await loadSessions();
-                
-            } catch (error) {
-                debugLog('세션 삭제 오류', error.message);
-                alert('세션 삭제 중 오류가 발생했습니다: ' + error.message);
-            }
-        }
-        
-        // 링크 복사
-        function copyLink() {
-            navigator.clipboard.writeText(currentSessionLink).then(() => {
-                alert('링크가 클립보드에 복사되었습니다!');
-            });
-        }
-        
-        // 세션 링크 복사
-        function copySessionLink(link) {
-            navigator.clipboard.writeText(link).then(() => {
-                alert('검사 링크가 클립보드에 복사되었습니다!');
-            });
-        }
-        
-        // 카카오톡 전송
-        function sendKakaoLink() {
-            alert('카카오톡 전송 기능은 추후 구현 예정입니다.\n현재는 링크를 복사해서 직접 전송해주세요.');
-        }
-        
-        // 세션 목록 새로고침
-        function refreshSessions() {
-            debugLog('세션 목록 새로고침 요청');
-            loadSessions();
-        }
-        
-        // 분석 모달 열기
-        async function openAnalysisModal(sessionId) {
-            debugLog('분석 모달 열기', sessionId);
-            currentSessionId = sessionId;
-            const modal = document.getElementById('interpretation-modal');
-            modal.style.display = 'block';
-            
-            // 첫 번째 탭 활성화
-            switchTab('interpretation');
-            
-            // 해석 자동 생성
-            await generateInterpretation(sessionId);
-        }
-        
-        // 탭 전환
-        function switchTab(tabName) {
-            debugLog('탭 전환', tabName);
-            
-            // 모든 탭 비활성화
-            document.querySelectorAll('.modal-tab').forEach(tab => {
-                tab.classList.remove('active');
-            });
-            document.querySelectorAll('.tab-content').forEach(content => {
-                content.classList.remove('active');
-            });
-            
-            // 선택된 탭 활성화
-            document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
-            document.getElementById(`${tabName}-tab`).classList.add('active');
-            
-            // 탭별 데이터 로드
-            if (tabName === 'analysis' && currentSessionId) {
-                loadCategoricalAnalysis(currentSessionId);
-            } else if (tabName === 'responses' && currentSessionId) {
-                loadAllResponses(currentSessionId);
-            }
-        }
-        
-        // 전문 해석 생성
-        async function generateInterpretation(sessionId) {
-            debugLog('전문 해석 생성 시작', sessionId);
-            
-            const loading = document.getElementById('interpretation-loading');
-            const content = document.getElementById('interpretation-content');
-            const actions = document.getElementById('interpretation-actions');
-            
-            loading.style.display = 'block';
-            content.innerHTML = '';
-            actions.style.display = 'none';
-            
-            try {
-                // 먼저 기존 해석이 있는지 확인
-                let interpretationResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpretation`, {
-                    headers: getApiHeaders()
-                });
-                
-                debugLog('해석 조회 응답', interpretationResponse.status);
-                
-                if (interpretationResponse.status === 404) {
-                    debugLog('해석이 없음, 새로 생성');
-                    // 해석이 없으면 새로 생성
-                    const generateResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpret`, {
-                        method: 'POST',
-                        headers: getApiHeaders()
-                    });
-                    
-                    debugLog('해석 생성 응답', generateResponse.status);
-                    
-                    if (!generateResponse.ok) {
-                        const errorData = await generateResponse.json();
-                        throw new Error(errorData.detail || '해석 생성에 실패했습니다.');
-                    }
-                    
-                    // 생성된 해석 가져오기
-                    interpretationResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpretation`, {
-                        headers: getApiHeaders()
-                    });
-                }
-                
-                if (!interpretationResponse.ok) {
-                    if (interpretationResponse.status === 401) {
-                        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
-                        localStorage.removeItem('access_token');
-                        localStorage.removeItem('currentUser');
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    throw new Error('해석 결과를 불러올 수 없습니다.');
-                }
-                
-                const data = await interpretationResponse.json();
-                debugLog('해석 데이터 수신', data);
-                
-                currentInterpretation = data.interpretation;
-                
-                loading.style.display = 'none';
-                
-                // 마크다운 스타일 해석 결과 표시
-                content.innerHTML = formatInterpretation(data.interpretation, data.patient_name);
-                actions.style.display = 'block';
-                
-            } catch (error) {
-                debugLog('해석 생성 오류', error.message);
-                loading.style.display = 'none';
-                content.innerHTML = `
-                    <div class="alert alert-error">
-                        <strong>❌ 오류가 발생했습니다</strong><br>
-                        ${error.message}
-                    </div>
-                `;
-            }
-        }
-        
-        // 해석 결과 포맷팅
-        function formatInterpretation(interpretation, patientName) {
-            let formatted = interpretation
-                .replace(/^# /gm, '<h1>')
-                .replace(/^## /gm, '<h2>')
-                .replace(/^### /gm, '<h3>')
-                .replace(/\n/g, '<br>')
-                .replace(/<h([123])>([^<]*)<br>/g, '<h$1>$2</h$1>')
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>');
-            
-            return `
-                <div style="margin-bottom: 20px; padding: 15px; background: #ebf8ff; border-radius: 8px; border-left: 4px solid #4299e1;">
-                    <h3 style="margin: 0; color: #2b6cb0;">환자: ${patientName}</h3>
-                    <p style="margin: 5px 0 0 0; color: #2c5282;">해석 생성일: ${new Date().toLocaleString('ko-KR')}</p>
-                </div>
-                ${formatted}
-            `;
-        }
-        
-        // 카테고리별 분석 로드
-        async function loadCategoricalAnalysis(sessionId) {
-            debugLog('카테고리별 분석 로드', sessionId);
-            
-            const loading = document.getElementById('analysis-loading');
-            const content = document.getElementById('analysis-content');
-            
-            loading.style.display = 'block';
-            content.innerHTML = '';
-            
-            try {
-                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/analysis`);
-                
-                if (!response.ok) {
-                    throw new Error('카테고리 분석을 불러올 수 없습니다.');
-                }
-                
-                const data = await response.json();
-                debugLog('카테고리 분석 데이터', data);
-                
-                loading.style.display = 'none';
-                
-                // 카테고리별 응답 표시
-                let html = '';
-                const categoryNames = {
-                    '가족관계': '👨‍👩‍👧‍👦 가족 관계',
-                    '대인관계': '🤝 대인 관계',
-                    '자아개념': '🪞 자아 개념',
-                    '정서조절': '💭 정서 조절',
-                    '성_결혼관': '💕 성 및 결혼관',
-                    '미래전망': '🔮 미래 전망',
-                    '과거경험': '📖 과거 경험',
-                    '현실적응': '🌍 현실 적응',
-                    '성격특성': '⭐ 성격 특성'
-                };
-                
-                for (const [category, responses] of Object.entries(data.categorized_responses)) {
-                    if (responses.length > 0) {
-                        html += `
-                            <div class="category-section">
-                                <div class="category-title">${categoryNames[category] || category}</div>
-                        `;
-                        
-                        responses.forEach(response => {
-                            html += `
-                                <div class="response-item">
-                                    <div class="response-stem">${response.item_no}. ${response.stem}</div>
-                                    <div class="response-answer">→ ${response.answer}</div>
-                                </div>
-                            `;
-                        });
-                        
-                        html += '</div>';
-                    }
-                }
-                
-                content.innerHTML = html;
-                
-            } catch (error) {
-                debugLog('카테고리 분석 로드 오류', error.message);
-                loading.style.display = 'none';
-                content.innerHTML = `
-                    <div class="alert alert-error">
-                        오류: ${error.message}
-                    </div>
-                `;
-            }
-        }
-        
-        // 전체 응답 로드
-        async function loadAllResponses(sessionId) {
-            debugLog('전체 응답 로드', sessionId);
-            
-            const content = document.getElementById('responses-content');
-            
-            try {
-                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}`);
-                
-                if (!response.ok) {
-                    throw new Error('세션 정보를 불러올 수 없습니다.');
-                }
-                
-                const data = await response.json();
-                debugLog('전체 응답 데이터', data);
-                
-                let html = '<div style="max-height: 500px; overflow-y: auto;">';
-                
-                if (data.responses && data.responses.length > 0) {
-                    data.responses.forEach(response => {
-                        html += `
-                            <div class="response-item">
-                                <div class="response-stem">${response.item_no}. ${response.stem}</div>
-                                <div class="response-answer">→ ${response.answer}</div>
-                            </div>
-                        `;
-                    });
-                } else {
-                    html += '<p>응답 데이터가 없습니다.</p>';
-                }
-                
-                html += '</div>';
-                content.innerHTML = html;
-                
-            } catch (error) {
-                debugLog('전체 응답 로드 오류', error.message);
-                content.innerHTML = `
-                    <div class="alert alert-error">
-                        오류: ${error.message}
-                    </div>
-                `;
-            }
-        }
-        
-        // PDF 해석 보고서 다운로드 (개선된 한글 지원 버전)
-// 가장 안전하고 확실한 방법: 브라우저 인쇄 기능 활용
-
-        async function downloadInterpretationPDF() {
-            if (!currentInterpretation) {
-                alert('다운로드할 해석 결과가 없습니다.');
-                return;
-            }
-            
-            // 1차: 브라우저 인쇄 대화상자 안내
-            const userChoice = confirm(
-                '한글이 포함된 PDF를 생성합니다.\n\n' +
-                '가장 안전한 방법:\n' +
-                '• "확인"을 누르면 인쇄 대화상자가 열립니다\n' +
-                '• "대상"에서 "PDF로 저장"을 선택하세요\n' +
-                '• 한글이 깨지지 않는 완벽한 PDF가 생성됩니다\n\n' +
-                '계속하시겠습니까?'
-            );
-            
-            if (!userChoice) {
-                // 사용자가 취소하면 텍스트 다운로드 제안
-                const textChoice = confirm('텍스트 파일로 다운로드하시겠습니까?');
-                if (textChoice) {
-                    downloadInterpretation();
-                }
-                return;
-            }
-            
-            // 인쇄용 페이지 생성 및 열기
-            openPrintPage();
-        }
-
-        function openPrintPage() {
-            const sessionData = allSessions.find(s => s.session_id === currentSessionId);
-            const patientName = sessionData ? (sessionData.patient_name || sessionData.patientName) : '환자';
-            
-            // 새 창에서 인쇄 전용 페이지 생성
-            const printWindow = window.open('', '_blank', 'width=800,height=900');
-            
-            // HTML을 깔끔한 텍스트로 변환
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = currentInterpretation;
-            const cleanText = tempDiv.textContent || tempDiv.innerText || '';
-            
-            printWindow.document.write(`
-        <!DOCTYPE html>
-        <html lang="ko">
-        <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>SCT 해석보고서 - ${patientName}</title>
-            <style>
-                @page {
-                    size: A4;
-                    margin: 2.5cm;
-                }
-                
-                * {
-                    margin: 0;
-                    padding: 0;
-                    box-sizing: border-box;
-                }
-                
-                body {
-                    font-family: '맑은 고딕', 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
-                    line-height: 1.7;
-                    color: #2d3748;
-                    font-size: 11px;
-                    background: white;
-                }
-                
-                .header {
-                    text-align: center;
-                    border-bottom: 3px solid #4299e1;
-                    padding-bottom: 25px;
-                    margin-bottom: 35px;
-                    background: linear-gradient(135deg, #f7fafc 0%, #ebf8ff 100%);
-                    padding: 30px;
-                    border-radius: 10px;
-                }
-                
-                .header h1 {
-                    font-size: 28px;
-                    color: #2b6cb0;
-                    margin-bottom: 10px;
-                    font-weight: bold;
-                    letter-spacing: 2px;
-                }
-                
-                .header p {
-                    font-size: 16px;
-                    color: #4a5568;
-                    margin: 5px 0;
-                }
-                
-                .patient-info {
-                    background: #f8f9fa;
-                    padding: 20px;
-                    border-radius: 8px;
-                    margin-bottom: 25px;
-                    border-left: 5px solid #4299e1;
-                }
-                
-                .patient-info h3 {
-                    color: #2b6cb0;
-                    margin-bottom: 15px;
-                    font-size: 16px;
-                }
-                
-                .patient-info p {
-                    margin: 8px 0;
-                    font-size: 12px;
-                }
-                
-                .patient-info strong {
-                    color: #2d3748;
-                    font-weight: 600;
-                }
-                
-                .content {
-                    margin-bottom: 30px;
-                }
-                
-                .content h1 {
-                    font-size: 20px;
-                    color: #2d3748;
-                    margin: 25px 0 15px 0;
-                    border-bottom: 2px solid #4299e1;
-                    padding-bottom: 8px;
-                    font-weight: bold;
-                }
-                
-                .content h2 {
-                    font-size: 16px;
-                    color: #4299e1;
-                    margin: 20px 0 10px 0;
-                    background: #f7fafc;
-                    padding: 8px 12px;
-                    border-radius: 5px;
-                    font-weight: 600;
-                }
-                
-                .content h3 {
-                    font-size: 14px;
-                    color: #667eea;
-                    margin: 15px 0 8px 0;
-                    font-weight: 600;
-                }
-                
-                .content p {
-                    margin: 8px 0;
-                    text-align: justify;
-                    line-height: 1.6;
-                }
-                
-                .content strong {
-                    color: #2d3748;
-                    font-weight: 600;
-                }
-                
-                .disclaimer {
-                    background: #fff3cd;
-                    border: 2px solid #ffd700;
-                    padding: 20px;
-                    margin-top: 30px;
-                    border-radius: 8px;
-                    page-break-inside: avoid;
-                }
-                
-                .disclaimer h4 {
-                    color: #c53030;
-                    margin-bottom: 15px;
-                    font-size: 14px;
-                    font-weight: bold;
-                }
-                
-                .disclaimer ul {
-                    margin: 0;
-                    padding-left: 20px;
-                    font-size: 10px;
-                    line-height: 1.5;
-                }
-                
-                .disclaimer li {
-                    margin-bottom: 8px;
-                }
-                
-                .footer {
-                    text-align: center;
-                    margin-top: 40px;
-                    padding-top: 20px;
-                    border-top: 2px solid #e2e8f0;
-                    font-size: 10px;
-                    color: #718096;
-                }
-                
-                .print-instructions {
-                    background: #e6fffa;
-                    border: 2px solid #38b2ac;
-                    padding: 20px;
-                    margin: 20px 0;
-                    border-radius: 8px;
-                    text-align: center;
-                }
-                
-                .print-instructions h3 {
-                    color: #2c7a7b;
-                    margin-bottom: 10px;
-                }
-                
-                .print-instructions p {
-                    margin: 5px 0;
-                    font-size: 12px;
-                }
-                
-                .print-button {
-                    background: #4299e1;
-                    color: white;
-                    border: none;
-                    padding: 12px 24px;
-                    border-radius: 6px;
-                    font-size: 14px;
-                    cursor: pointer;
-                    margin: 10px;
-                    font-weight: 600;
-                }
-                
-                .print-button:hover {
-                    background: #3182ce;
-                }
-                
-                @media print {
-                    .no-print {
-                        display: none !important;
-                    }
-                    
-                    body {
-                        font-size: 10px;
-                    }
-                    
-                    .print-instructions {
-                        display: none;
-                    }
-                }
-                
-                @media screen {
-                    body {
-                        max-width: 800px;
-                        margin: 20px auto;
-                        padding: 20px;
-                        box-shadow: 0 0 20px rgba(0,0,0,0.1);
-                        border-radius: 10px;
-                    }
-                }
-            </style>
-        </head>
-        <body>
-            <div class="print-instructions no-print">
-                <h3>📄 PDF 저장 방법</h3>
-                <p><strong>1단계:</strong> 아래 "인쇄하기" 버튼을 클릭</p>
-                <p><strong>2단계:</strong> 프린터 대상을 "PDF로 저장" 선택</p>
-                <p><strong>3단계:</strong> "저장" 클릭하여 완벽한 한글 PDF 생성</p>
-                <button class="print-button" onclick="window.print()">🖨️ 인쇄하기 (PDF 저장)</button>
-                <button class="print-button" onclick="window.close()" style="background: #6c757d;">❌ 닫기</button>
-            </div>
-
-            <div class="header">
-                <h1>SCT 검사 해석 보고서</h1>
-                <p>🏥 전문 심리검사 시스템</p>
-                <p>Sentence Completion Test Analysis Report</p>
-            </div>
-            
-            <div class="patient-info">
-                <h3>📋 환자 정보</h3>
-                <p><strong>환자명:</strong> ${patientName}</p>
-                <p><strong>해석 생성일:</strong> ${new Date().toLocaleString('ko-KR')}</p>
-                <p><strong>세션 ID:</strong> ${currentSessionId}</p>
-                <p><strong>검사 유형:</strong> SCT (문장완성검사)</p>
-            </div>
-            
-            <div class="content">
-                ${formatContentForPrint(cleanText)}
-            </div>
-            
-            <div class="disclaimer">
-                <h4>⚠️ 중요한 면책조항</h4>
-                <ul>
-                    <li>본 보고서는 AI 기반 자동 해석 시스템에 의해 생성되었습니다.</li>
-                    <li>임상적 판단은 반드시 자격을 갖춘 정신건강 전문의의 검토를 거쳐 최종 확정되어야 합니다.</li>
-                    <li>본 해석은 참고 자료로만 활용되어야 하며, 단독으로 진단이나 치료 결정의 근거가 될 수 없습니다.</li>
-                    <li>환자의 전체적인 임상 상황과 다른 검사 결과들을 종합하여 해석해야 합니다.</li>
-                    <li>본 시스템은 정신건강의학과 전문의의 임상적 판단을 보조하는 도구입니다.</li>
-                </ul>
-            </div>
-            
-            <div class="footer">
-                <p><strong>Generated by SCT Analysis System</strong></p>
-                <p>© 2024 Professional Mental Health Assessment Platform</p>
-                <p>이 문서는 의료진 전용이며 환자 개인정보보호법에 따라 보호됩니다.</p>
-            </div>
-        </body>
-        </html>
-            `);
-            
-            printWindow.document.close();
-            
-            // 페이지 로딩 후 자동으로 인쇄 대화상자 열기
-            printWindow.onload = function() {
-                setTimeout(() => {
-                    printWindow.focus();
-                }, 500);
-            };
-        }
-
-        // 텍스트 포맷팅 함수
-        function formatContentForPrint(text) {
-            const paragraphs = text.split('\n').filter(p => p.trim());
-            let formattedContent = '';
-            
-            paragraphs.forEach(paragraph => {
-                const trimmed = paragraph.trim();
-                if (trimmed.startsWith('# ')) {
-                    formattedContent += `<h1>${trimmed.substring(2)}</h1>`;
-                } else if (trimmed.startsWith('## ')) {
-                    formattedContent += `<h2>${trimmed.substring(3)}</h2>`;
-                } else if (trimmed.startsWith('### ')) {
-                    formattedContent += `<h3>${trimmed.substring(4)}</h3>`;
-                } else if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
-                    formattedContent += `<p><strong>${trimmed.slice(2, -2)}</strong></p>`;
-                } else if (trimmed.length > 0) {
-                    formattedContent += `<p>${trimmed}</p>`;
-                }
-            });
-            
-            return formattedContent;
-        }
-        
-        // 개선된 PDF용 HTML 콘텐츠 생성
-        function createImprovedPDFContent(patientName, interpretation) {
-            const div = document.createElement('div');
-            div.style.cssText = `
-                width: 210mm;
-                min-height: 297mm;
-                padding: 20mm;
-                background: white;
-                font-family: 'Malgun Gothic', 'Noto Sans KR', '맑은 고딕', 'Apple SD Gothic Neo', sans-serif;
-                position: absolute;
-                left: -9999px;
-                top: 0;
-                color: #333;
-                line-height: 1.6;
-            `;
-            
-            // HTML을 텍스트로 변환
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = interpretation;
-            const textContent = tempDiv.textContent || tempDiv.innerText || '';
-            
-            // 텍스트를 단락별로 나누어 포맷팅
-            const paragraphs = textContent.split('\n').filter(p => p.trim());
-            let formattedContent = '';
-            
-            paragraphs.forEach(paragraph => {
-                const trimmed = paragraph.trim();
-                if (trimmed.startsWith('# ')) {
-                    formattedContent += `<h1 style="font-size: 18px; font-weight: bold; color: #2d3748; margin: 20px 0 10px 0; border-bottom: 2px solid #4299e1; padding-bottom: 8px;">${trimmed.substring(2)}</h1>`;
-                } else if (trimmed.startsWith('## ')) {
-                    formattedContent += `<h2 style="font-size: 16px; font-weight: bold; color: #4299e1; margin: 15px 0 8px 0;">${trimmed.substring(3)}</h2>`;
-                } else if (trimmed.startsWith('### ')) {
-                    formattedContent += `<h3 style="font-size: 14px; font-weight: bold; color: #667eea; margin: 12px 0 6px 0;">${trimmed.substring(4)}</h3>`;
-                } else if (trimmed.startsWith('**') && trimmed.endsWith('**')) {
-                    formattedContent += `<p style="font-size: 12px; font-weight: bold; margin: 8px 0; color: #2d3748;">${trimmed.slice(2, -2)}</p>`;
-                } else if (trimmed.length > 0) {
-                    formattedContent += `<p style="font-size: 11px; margin: 6px 0; color: #4a5568; text-align: justify;">${trimmed}</p>`;
-                }
-            });
-            
-            div.innerHTML = `
-                <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; margin: -20mm -20mm 20px -20mm; text-align: center; border-radius: 0;">
-                    <h1 style="font-size: 28px; margin: 0; font-weight: bold; letter-spacing: 2px;">SCT 검사 해석 보고서</h1>
-                    <p style="font-size: 16px; margin: 15px 0 5px 0; opacity: 0.9;">🏥 전문 심리검사 시스템</p>
-                    <p style="font-size: 12px; margin: 0; opacity: 0.8;">Sentence Completion Test Analysis Report</p>
-                </div>
-                
-                <div style="border: 3px solid #4299e1; border-radius: 12px; padding: 20px; margin-bottom: 25px; background: linear-gradient(135deg, #f7fafc 0%, #ebf8ff 100%);">
-                    <h3 style="color: #2b6cb0; margin: 0 0 15px 0; font-size: 18px; text-align: center;">📋 환자 정보</h3>
-                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div>
-                            <p style="margin: 8px 0; font-size: 13px;"><strong style="color: #2d3748;">환자명:</strong> <span style="color: #4a5568; font-size: 14px; font-weight: 600;">${patientName}</span></p>
-                            <p style="margin: 8px 0; font-size: 13px;"><strong style="color: #2d3748;">검사 유형:</strong> <span style="color: #4a5568;">SCT (문장완성검사)</span></p>
-                        </div>
-                        <div>
-                            <p style="margin: 8px 0; font-size: 13px;"><strong style="color: #2d3748;">해석 생성일:</strong> <span style="color: #4a5568;">${new Date().toLocaleString('ko-KR')}</span></p>
-                            <p style="margin: 8px 0; font-size: 13px;"><strong style="color: #2d3748;">세션 ID:</strong> <span style="color: #4a5568; font-family: monospace; font-size: 10px;">${currentSessionId}</span></p>
-                        </div>
-                    </div>
-                </div>
-                
-                <div style="background: #fff; border-radius: 8px; padding: 15px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                    ${formattedContent}
-                </div>
-                
-                <div style="margin-top: 40px; padding: 20px; background: #f8f9fa; border-radius: 8px; border-left: 4px solid #e53e3e;">
-                    <h4 style="color: #c53030; margin: 0 0 15px 0; font-size: 14px;">⚠️ 중요한 면책조항</h4>
-                    <ul style="margin: 0; padding-left: 20px; font-size: 10px; color: #666; line-height: 1.6;">
-                        <li style="margin-bottom: 8px;">본 보고서는 AI 기반 자동 해석 시스템에 의해 생성되었습니다.</li>
-                        <li style="margin-bottom: 8px;">임상적 판단은 반드시 자격을 갖춘 정신건강 전문의의 검토를 거쳐 최종 확정되어야 합니다.</li>
-                        <li style="margin-bottom: 8px;">본 해석은 참고 자료로만 활용되어야 하며, 단독으로 진단이나 치료 결정의 근거가 될 수 없습니다.</li>
-                        <li style="margin-bottom: 8px;">환자의 전체적인 임상 상황과 다른 검사 결과들을 종합하여 해석해야 합니다.</li>
-                        <li>본 시스템은 정신건강의학과 전문의의 임상적 판단을 보조하는 도구입니다.</li>
-                    </ul>
-                </div>
-                
-                <div style="margin-top: 30px; text-align: center; padding-top: 20px; border-top: 2px solid #e2e8f0;">
-                    <p style="font-size: 10px; color: #718096; margin: 5px 0;">Generated by SCT Analysis System</p>
-                    <p style="font-size: 10px; color: #718096; margin: 5px 0;">© 2024 Professional Mental Health Assessment Platform</p>
-                    <p style="font-size: 9px; color: #a0aec0; margin: 5px 0;">이 문서는 의료진 전용이며 환자 개인정보보호법에 따라 보호됩니다.</p>
-                </div>
-            `;
-            
-            document.body.appendChild(div);
-            return div;
-        }
-        
-        // 텍스트 해석 보고서 다운로드
-        function downloadInterpretation() {
-            if (!currentInterpretation) {
-                alert('다운로드할 해석 결과가 없습니다.');
-                return;
-            }
-            
-            const sessionData = allSessions.find(s => s.session_id === currentSessionId);
-            const patientName = sessionData ? (sessionData.patient_name || sessionData.patientName) : '환자';
-            const today = new Date().toISOString().split('T')[0];
-            
-            // HTML을 텍스트로 변환
-            const tempDiv = document.createElement('div');
-            tempDiv.innerHTML = currentInterpretation;
-            const textContent = tempDiv.textContent || tempDiv.innerText || '';
-            
-            const content = `SCT (문장완성검사) 해석 보고서
-=====================================
-
-환자명: ${patientName}
-해석 생성일: ${new Date().toLocaleString('ko-KR')}
-세션 ID: ${currentSessionId}
-검사 유형: SCT (Sentence Completion Test)
-
-=====================================
-
-${textContent}
-
-=====================================
-면책조항:
-- 본 보고서는 AI 기반 자동 해석 시스템에 의해 생성되었습니다.
-- 임상적 판단은 반드시 자격을 갖춘 정신건강 전문의의 검토를 거쳐 최종 확정되어야 합니다.
-- 본 해석은 참고 자료로만 활용되어야 하며, 단독으로 진단이나 치료 결정의 근거가 될 수 없습니다.
-- 환자의 전체적인 임상 상황과 다른 검사 결과들을 종합하여 해석해야 합니다.
-
-© 2024 SCT Analysis System - Professional Mental Health Assessment Platform
-`;
-            
-            const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `SCT_해석보고서_${patientName}_${today}.txt`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }
-        
-        // 해석 모달 닫기
-        function closeInterpretationModal() {
-            document.getElementById('interpretation-modal').style.display = 'none';
-            currentSessionId = '';
-            currentInterpretation = '';
-        }
-        
-        // 모달 외부 클릭 시 닫기
-        window.onclick = function(event) {
-            const modal = document.getElementById('interpretation-modal');
-            if (event.target === modal) {
-                modal.style.display = 'none';
-            }
-        }
-    </script>
-</body>
-</html>
+                <div class="form-group

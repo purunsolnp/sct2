@@ -1,9 +1,12 @@
 from fastapi import FastAPI, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from sqlalchemy import Column, String, DateTime, Text, Boolean, Integer, func, extract
+from sqlalchemy import Column, String, DateTime, Text, Boolean, Integer, func, extract, and_, or_, create_engine, text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import QueuePool
 from pydantic import BaseModel, EmailStr
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List
 import hashlib
 import jwt
@@ -12,13 +15,114 @@ from openai import OpenAI
 import json
 import uuid
 import logging
+import pytz
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# 개선된 데이터베이스 설정 import
-from database_config import engine, SessionLocal, Base, get_db, create_tables, check_database_health
+# 한국 시간대 설정
+KST = pytz.timezone('Asia/Seoul')
+
+def get_kst_now():
+    """현재 한국 시간 반환"""
+    return datetime.now(KST)
+
+def to_kst(dt):
+    """UTC 시간을 KST로 변환"""
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(KST)
+
+# 데이터베이스 설정
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+# Render에서 제공하는 기본 PostgreSQL URL 형식 처리
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+
+# 데이터베이스 엔진 생성
+def create_database_engine():
+    if not DATABASE_URL:
+        logger.info("⚠️ DATABASE_URL이 설정되지 않았습니다. SQLite로 폴백합니다.")
+        # SQLite 폴백 (개발용)
+        return create_engine(
+            "sqlite:///./sct_app.db",
+            connect_args={"check_same_thread": False},
+            echo=False
+        )
+    
+    # PostgreSQL 연결 설정
+    connect_args = {
+        "sslmode": "require",
+        "connect_timeout": 30,
+    }
+    
+    try:
+        engine = create_engine(
+            DATABASE_URL,
+            poolclass=QueuePool,
+            pool_size=5,
+            max_overflow=10,
+            pool_pre_ping=True,
+            pool_recycle=300,
+            connect_args=connect_args,
+            echo=False
+        )
+        
+        # 연결 테스트
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        
+        logger.info("✅ PostgreSQL 데이터베이스 연결 성공")
+        return engine
+        
+    except Exception as e:
+        logger.error(f"❌ PostgreSQL 연결 실패: {e}")
+        logger.info("⚠️ SQLite로 폴백합니다.")
+        
+        # SQLite 폴백
+        return create_engine(
+            "sqlite:///./sct_app.db",
+            connect_args={"check_same_thread": False},
+            echo=False
+        )
+
+# 데이터베이스 엔진 생성
+engine = create_database_engine()
+
+# 세션 팩토리 생성
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Base 클래스
+Base = declarative_base()
+
+# 의존성 주입용 함수
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+# 테이블 생성 함수
+def create_tables():
+    try:
+        Base.metadata.create_all(bind=engine)
+        logger.info("✅ 데이터베이스 테이블 생성 완료")
+        return True
+    except Exception as e:
+        logger.error(f"❌ 테이블 생성 실패: {e}")
+        return False
+
+# 헬스체크 함수
+def check_database_health():
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "database": f"error: {str(e)}"}
 
 # 환경 변수
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
@@ -69,7 +173,7 @@ class User(Base):
     phone = Column(String, nullable=True)
     medical_license = Column(String, nullable=True)
     is_verified = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: get_kst_now().replace(tzinfo=None))
 
 class SCTSession(Base):
     __tablename__ = "sct_sessions"
@@ -78,7 +182,7 @@ class SCTSession(Base):
     doctor_id = Column(String, index=True)
     patient_name = Column(String)
     status = Column(String, default="incomplete")
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: get_kst_now().replace(tzinfo=None))
     submitted_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime)
 
@@ -90,7 +194,7 @@ class SCTResponse(Base):
     item_no = Column(Integer)
     stem = Column(Text)
     answer = Column(Text)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: get_kst_now().replace(tzinfo=None))
 
 class SCTInterpretation(Base):
     __tablename__ = "sct_interpretations"
@@ -98,7 +202,7 @@ class SCTInterpretation(Base):
     session_id = Column(String, primary_key=True, index=True)
     interpretation = Column(Text)
     patient_name = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: get_kst_now().replace(tzinfo=None))
 
 # Pydantic 모델
 class UserCreate(BaseModel):
@@ -139,8 +243,8 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(hours=24)
-    to_encode.update({"exp": expire})
+    expire = get_kst_now() + timedelta(hours=24)
+    to_encode.update({"exp": expire.timestamp()})
     return jwt.encode(to_encode, SECRET_KEY, algorithm="HS256")
 
 def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -152,6 +256,13 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         return doctor_id
     except jwt.PyJWTError:
         raise HTTPException(status_code=401, detail="Invalid token")
+
+# 관리자 권한 확인 함수
+def check_admin_permission(current_user: str):
+    """관리자 권한 확인"""
+    admin_users = ["admin", "doctor1"]  # 임시 관리자 계정들
+    if current_user not in admin_users:
+        raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
 
 # SCT 검사 문항 (50개)
 SCT_ITEMS = [
@@ -165,7 +276,7 @@ SCT_ITEMS = [
     "남자에 대해서 무엇보다 좋지 않게 생각하는 것은",
     "내가 바라는 여인상(女人像)은",
     "남녀가 같이 있는 것을 볼 때",
-    "내가 늘 원하는 것은은",
+    "내가 늘 원하는 것은",
     "다른 가정과 비교해서 우리 집안은",
     "나의 어머니는",
     "무슨 일을 해서라도 잊고 싶은 것은",
@@ -246,7 +357,7 @@ async def root():
 async def health_check():
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow(),
+        "timestamp": get_kst_now(),
         "database": check_database_health(),
         "openai": "available" if openai_client else "unavailable"
     }
@@ -339,11 +450,10 @@ async def create_session(
 ):
     try:
         logger.info(f"🏗️ 새 세션 생성 요청: patient={session_data.patient_name}, doctor={current_user}")
-        logger.info(f"🔍 입력받은 patient_name: '{session_data.patient_name}' (타입: {type(session_data.patient_name)})")
         
         session_id = str(uuid.uuid4())
-        expires_at = datetime.utcnow() + timedelta(days=7)
-        current_time = datetime.utcnow()
+        expires_at = get_kst_now() + timedelta(days=7)
+        current_time = get_kst_now()
         
         # patient_name 검증 및 정제
         patient_name = session_data.patient_name.strip() if session_data.patient_name else None
@@ -351,28 +461,24 @@ async def create_session(
             logger.error(f"❌ patient_name이 비어있음: '{session_data.patient_name}'")
             raise HTTPException(status_code=400, detail="환자 이름이 비어있습니다")
         
-        logger.info(f"🔍 정제된 patient_name: '{patient_name}'")
-        
         db_session = SCTSession(
             session_id=session_id,
             doctor_id=current_user,
-            patient_name=patient_name,  # 정제된 이름 사용
+            patient_name=patient_name,
             status="incomplete",
-            created_at=current_time,
-            expires_at=expires_at
+            created_at=current_time.replace(tzinfo=None),
+            expires_at=expires_at.replace(tzinfo=None)
         )
         
         db.add(db_session)
         db.commit()
         db.refresh(db_session)
         
-        # 저장 후 확인
-        logger.info(f"🔍 DB 저장 후 patient_name: '{db_session.patient_name}'")
         logger.info(f"✅ 새 세션 생성 완료: {session_id}")
         
         return {
             "session_id": session_id, 
-            "patient_name": db_session.patient_name,  # DB에서 읽은 값 사용
+            "patient_name": db_session.patient_name,
             "doctor_id": current_user,
             "status": "incomplete",
             "created_at": current_time.isoformat(),
@@ -404,9 +510,9 @@ async def get_sessions_by_user(
         logger.info(f"📊 조회된 세션 수: {len(sessions)}")
         
         # 만료된 세션 상태 업데이트
-        current_time = datetime.utcnow()
+        current_time = get_kst_now()
         for session in sessions:
-            if session.expires_at < current_time and session.status != "complete":
+            if session.expires_at and session.expires_at < current_time.replace(tzinfo=None) and session.status != "complete":
                 session.status = "expired"
                 logger.info(f"⏰ 세션 만료 처리: {session.session_id}")
         
@@ -441,8 +547,6 @@ async def get_sessions_by_user(
     except Exception as e:
         logger.error(f"❌ 세션 목록 조회 오류: {e}")
         raise HTTPException(status_code=500, detail=f"세션 목록 조회 중 오류가 발생했습니다: {str(e)}")
-
-# ===== 새로 추가된 기능들 =====
 
 @app.delete("/sct/sessions/{session_id}")
 async def delete_session(
@@ -513,110 +617,6 @@ async def delete_session(
         db.rollback()
         raise HTTPException(status_code=500, detail=f"세션 삭제 중 오류가 발생했습니다: {str(e)}")
 
-@app.get("/sct/sessions/by-user/{doctor_id}/paginated")
-async def get_sessions_by_user_paginated(
-    doctor_id: str,
-    page: int = 1,
-    limit: int = 20,
-    search: str = None,
-    status: str = None,
-    date_from: str = None,
-    date_to: str = None,
-    db = Depends(get_db),
-    current_user: str = Depends(verify_token)
-):
-    """페이징과 필터링을 지원하는 세션 목록 조회"""
-    try:
-        logger.info(f"📄 페이징된 세션 목록 조회: doctor_id={doctor_id}, page={page}, limit={limit}")
-        
-        if current_user != doctor_id:
-            raise HTTPException(status_code=403, detail="접근 권한이 없습니다")
-        
-        # 기본 쿼리
-        query = db.query(SCTSession).filter(SCTSession.doctor_id == doctor_id)
-        
-        # 검색 필터 (환자명)
-        if search:
-            search_term = f"%{search}%"
-            query = query.filter(SCTSession.patient_name.ilike(search_term))
-        
-        # 상태 필터
-        if status:
-            query = query.filter(SCTSession.status == status)
-        
-        # 날짜 범위 필터
-        if date_from:
-            try:
-                from_date = datetime.strptime(date_from, "%Y-%m-%d")
-                query = query.filter(SCTSession.created_at >= from_date)
-            except ValueError:
-                logger.warning(f"잘못된 시작 날짜 형식: {date_from}")
-        
-        if date_to:
-            try:
-                to_date = datetime.strptime(date_to, "%Y-%m-%d")
-                # 하루 끝까지 포함
-                to_date = to_date.replace(hour=23, minute=59, second=59)
-                query = query.filter(SCTSession.created_at <= to_date)
-            except ValueError:
-                logger.warning(f"잘못된 종료 날짜 형식: {date_to}")
-        
-        # 전체 개수 계산
-        total_count = query.count()
-        
-        # 페이징 적용
-        offset = (page - 1) * limit
-        sessions = query.order_by(SCTSession.created_at.desc()).offset(offset).limit(limit).all()
-        
-        # 만료된 세션 상태 업데이트
-        current_time = datetime.utcnow()
-        for session in sessions:
-            if session.expires_at < current_time and session.status != "complete":
-                session.status = "expired"
-        
-        db.commit()
-        
-        # 응답 데이터 구성
-        session_list = []
-        for session in sessions:
-            response_count = db.query(SCTResponse).filter(
-                SCTResponse.session_id == session.session_id
-            ).count()
-            
-            session_data = {
-                "session_id": session.session_id,
-                "doctor_id": session.doctor_id,
-                "patient_name": session.patient_name,
-                "status": session.status,
-                "created_at": session.created_at.isoformat() if session.created_at else None,
-                "submitted_at": session.submitted_at.isoformat() if session.submitted_at else None,
-                "expires_at": session.expires_at.isoformat() if session.expires_at else None,
-                "response_count": response_count
-            }
-            session_list.append(session_data)
-        
-        total_pages = (total_count + limit - 1) // limit
-        
-        logger.info(f"✅ 페이징된 세션 목록 반환: {len(session_list)}개 세션 (전체 {total_count}개)")
-        
-        return {
-            "sessions": session_list,
-            "pagination": {
-                "current_page": page,
-                "total_pages": total_pages,
-                "total_count": total_count,
-                "per_page": limit,
-                "has_next": page < total_pages,
-                "has_prev": page > 1
-            }
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ 페이징된 세션 목록 조회 오류: {e}")
-        raise HTTPException(status_code=500, detail=f"세션 목록 조회 중 오류가 발생했습니다: {str(e)}")
-
 @app.get("/sct/sessions/statistics/{doctor_id}")
 async def get_session_statistics(
     doctor_id: str,
@@ -645,8 +645,8 @@ async def get_session_statistics(
             SCTSession.status == "expired"
         ).count()
         
-        # 월별 통계 (최근 6개월)
-        six_months_ago = datetime.utcnow() - timedelta(days=180)
+        # 월별 통계 (최근 6개월) - KST 기준
+        six_months_ago = get_kst_now() - timedelta(days=180)
         
         monthly_stats = db.query(
             extract('year', SCTSession.created_at).label('year'),
@@ -654,7 +654,7 @@ async def get_session_statistics(
             func.count(SCTSession.session_id).label('count')
         ).filter(
             SCTSession.doctor_id == doctor_id,
-            SCTSession.created_at >= six_months_ago
+            SCTSession.created_at >= six_months_ago.replace(tzinfo=None)
         ).group_by(
             extract('year', SCTSession.created_at),
             extract('month', SCTSession.created_at)
@@ -707,60 +707,455 @@ async def get_session_statistics(
         logger.error(f"❌ 세션 통계 조회 오류: {e}")
         raise HTTPException(status_code=500, detail=f"통계 조회 중 오류가 발생했습니다: {str(e)}")
 
-@app.post("/admin/cleanup")
-async def cleanup_expired_sessions(
-    days_old: int = 30,
+# ===== 관리자 기능 =====
+
+# 관리자 대시보드 통계
+@app.get("/admin/dashboard/stats")
+async def get_admin_dashboard_stats(
     db = Depends(get_db),
     current_user: str = Depends(verify_token)
 ):
-    """만료된 오래된 세션들을 정리합니다. (관리자용)"""
+    """관리자 대시보드 통계 정보"""
     try:
-        # 관리자 권한 확인 (실제 구현 시 관리자 권한 체크 로직 추가)
-        if current_user not in ["admin", "doctor1"]:  # 임시 관리자 계정
-            raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
+        check_admin_permission(current_user)
         
-        logger.info(f"🧹 만료된 세션 정리 시작: {days_old}일 이전")
+        # 전체 사용자 수
+        total_users = db.query(User).count()
         
-        cleanup_date = datetime.utcnow() - timedelta(days=days_old)
+        # 전체 세션 수 (각 상태별)
+        total_sessions = db.query(SCTSession).count()
+        completed_sessions = db.query(SCTSession).filter(SCTSession.status == 'complete').count()
+        pending_sessions = db.query(SCTSession).filter(SCTSession.status == 'incomplete').count()
+        expired_sessions = db.query(SCTSession).filter(SCTSession.status == 'expired').count()
         
-        # 오래된 만료 세션 조회
-        old_expired_sessions = db.query(SCTSession).filter(
-            SCTSession.status == "expired",
-            SCTSession.created_at < cleanup_date
-        ).all()
+        # 이번 달 생성된 세션 수
+        now = get_kst_now()
+        month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        this_month_sessions = db.query(SCTSession).filter(
+            SCTSession.created_at >= month_start.replace(tzinfo=None)
+        ).count()
         
-        cleanup_count = 0
-        for session in old_expired_sessions:
-            session_id = session.session_id
-            
-            # 관련 데이터 삭제
-            db.query(SCTInterpretation).filter(
-                SCTInterpretation.session_id == session_id
-            ).delete()
-            
-            db.query(SCTResponse).filter(
-                SCTResponse.session_id == session_id
-            ).delete()
-            
-            db.delete(session)
-            cleanup_count += 1
+        # 이번 달 완료된 검사 수
+        this_month_completed = db.query(SCTSession).filter(
+            and_(
+                SCTSession.status == 'complete',
+                SCTSession.submitted_at >= month_start.replace(tzinfo=None)
+            )
+        ).count()
         
-        db.commit()
-        
-        logger.info(f"✅ 정리 완료: {cleanup_count}개 세션 삭제")
+        # 활성 사용자 수 (최근 30일 내 세션 생성한 사용자)
+        thirty_days_ago = now - timedelta(days=30)
+        active_users = db.query(User.doctor_id).join(
+            SCTSession, User.doctor_id == SCTSession.doctor_id
+        ).filter(
+            SCTSession.created_at >= thirty_days_ago.replace(tzinfo=None)
+        ).distinct().count()
         
         return {
-            "message": f"{cleanup_count}개의 오래된 만료 세션이 정리되었습니다",
-            "cleaned_count": cleanup_count,
-            "cleanup_date": cleanup_date.isoformat()
+            "total_users": total_users,
+            "total_sessions": total_sessions,
+            "completed_sessions": completed_sessions,
+            "pending_sessions": pending_sessions,
+            "expired_sessions": expired_sessions,
+            "this_month_sessions": this_month_sessions,
+            "this_month_completed": this_month_completed,
+            "active_users": active_users,
+            "completion_rate": round((completed_sessions / total_sessions * 100) if total_sessions > 0 else 0, 1)
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"❌ 세션 정리 오류: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"세션 정리 중 오류가 발생했습니다: {str(e)}")
+        logger.error(f"❌ 관리자 통계 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"통계 조회 중 오류: {str(e)}")
+
+# 전체 사용자 목록 조회
+@app.get("/admin/users")
+async def get_all_users(
+    page: int = 1,
+    limit: int = 20,
+    search: str = None,
+    db = Depends(get_db),
+    current_user: str = Depends(verify_token)
+):
+    """전체 사용자 목록 조회 (관리자용)"""
+    try:
+        check_admin_permission(current_user)
+        
+        # 기본 쿼리
+        query = db.query(User)
+        
+        # 검색 필터
+        if search:
+            search_term = f"%{search}%"
+            query = query.filter(
+                or_(
+                    User.doctor_id.ilike(search_term),
+                    User.email.ilike(search_term),
+                    User.first_name.ilike(search_term),
+                    User.last_name.ilike(search_term),
+                    User.hospital.ilike(search_term)
+                )
+            )
+        
+        # 전체 개수
+        total_count = query.count()
+        
+        # 페이징
+        offset = (page - 1) * limit
+        users = query.order_by(User.created_at.desc()).offset(offset).limit(limit).all()
+        
+        # 각 사용자별 통계 계산
+        user_list = []
+        for user in users:
+            # 최근 30일간 세션 수
+            thirty_days_ago = get_kst_now() - timedelta(days=30)
+            recent_sessions = db.query(SCTSession).filter(
+                and_(
+                    SCTSession.doctor_id == user.doctor_id,
+                    SCTSession.created_at >= thirty_days_ago.replace(tzinfo=None)
+                )
+            ).count()
+            
+            # 전체 세션 수
+            total_user_sessions = db.query(SCTSession).filter(
+                SCTSession.doctor_id == user.doctor_id
+            ).count()
+            
+            # 완료된 세션 수
+            completed_user_sessions = db.query(SCTSession).filter(
+                and_(
+                    SCTSession.doctor_id == user.doctor_id,
+                    SCTSession.status == 'complete'
+                )
+            ).count()
+            
+            # 마지막 활동일
+            last_session = db.query(SCTSession).filter(
+                SCTSession.doctor_id == user.doctor_id
+            ).order_by(SCTSession.created_at.desc()).first()
+            
+            last_activity = last_session.created_at if last_session else user.created_at
+            
+            user_data = {
+                "doctor_id": user.doctor_id,
+                "name": f"{user.last_name}{user.first_name}",
+                "email": user.email,
+                "specialty": user.specialty,
+                "hospital": user.hospital,
+                "phone": user.phone,
+                "medical_license": user.medical_license,
+                "is_verified": user.is_verified,
+                "created_at": user.created_at.isoformat() if user.created_at else None,
+                "last_activity": last_activity.isoformat() if last_activity else None,
+                "total_sessions": total_user_sessions,
+                "completed_sessions": completed_user_sessions,
+                "recent_30days_sessions": recent_sessions,
+                "is_active": recent_sessions > 0
+            }
+            user_list.append(user_data)
+        
+        total_pages = (total_count + limit - 1) // limit
+        
+        return {
+            "users": user_list,
+            "pagination": {
+                "current_page": page,
+                "total_pages": total_pages,
+                "total_count": total_count,
+                "per_page": limit,
+                "has_next": page < total_pages,
+                "has_prev": page > 1
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 사용자 목록 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"사용자 목록 조회 중 오류: {str(e)}")
+
+# 사용자 계정 활성화/비활성화
+@app.patch("/admin/users/{doctor_id}/status")
+async def toggle_user_status(
+    doctor_id: str,
+    is_verified: bool,
+    db = Depends(get_db),
+    current_user: str = Depends(verify_token)
+):
+    """사용자 계정 활성화/비활성화"""
+    try:
+        check_admin_permission(current_user)
+        
+        user = db.query(User).filter(User.doctor_id == doctor_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+        
+        user.is_verified = is_verified
+        db.commit()
+        
+        status_text = "활성화" if is_verified else "비활성화"
+        logger.info(f"✅ 사용자 계정 {status_text}: {doctor_id}")
+        
+        return {
+            "message": f"사용자 계정이 {status_text}되었습니다",
+            "doctor_id": doctor_id,
+            "is_verified": is_verified
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 사용자 상태 변경 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"상태 변경 중 오류: {str(e)}")
+
+# 월별 사용 통계
+@app.get("/admin/usage-stats")
+async def get_usage_statistics(
+    months: int = 12,
+    db = Depends(get_db),
+    current_user: str = Depends(verify_token)
+):
+    """월별 사용 통계"""
+    try:
+        check_admin_permission(current_user)
+        
+        now = get_kst_now()
+        stats = []
+        
+        for i in range(months):
+            # 각 달의 시작과 끝
+            target_date = now - timedelta(days=30 * i)
+            month_start = target_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            
+            if target_date.month == 12:
+                next_month_start = target_date.replace(year=target_date.year + 1, month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            else:
+                next_month_start = target_date.replace(month=target_date.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
+            
+            # 해당 월의 통계
+            month_sessions = db.query(SCTSession).filter(
+                and_(
+                    SCTSession.created_at >= month_start.replace(tzinfo=None),
+                    SCTSession.created_at < next_month_start.replace(tzinfo=None)
+                )
+            ).count()
+            
+            month_completed = db.query(SCTSession).filter(
+                and_(
+                    SCTSession.status == 'complete',
+                    SCTSession.submitted_at >= month_start.replace(tzinfo=None),
+                    SCTSession.submitted_at < next_month_start.replace(tzinfo=None)
+                )
+            ).count()
+            
+            # 해당 월에 활동한 사용자 수
+            active_users = db.query(User.doctor_id).join(
+                SCTSession, User.doctor_id == SCTSession.doctor_id
+            ).filter(
+                and_(
+                    SCTSession.created_at >= month_start.replace(tzinfo=None),
+                    SCTSession.created_at < next_month_start.replace(tzinfo=None)
+                )
+            ).distinct().count()
+            
+            stats.append({
+                "year": target_date.year,
+                "month": target_date.month,
+                "month_name": target_date.strftime('%Y년 %m월'),
+                "total_sessions": month_sessions,
+                "completed_sessions": month_completed,
+                "active_users": active_users,
+                "completion_rate": round((month_completed / month_sessions * 100) if month_sessions > 0 else 0, 1)
+            })
+        
+        # 최신 월부터 정렬
+        stats.reverse()
+        
+        return {
+            "monthly_stats": stats,
+            "period": f"{months}개월"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 사용 통계 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"통계 조회 중 오류: {str(e)}")
+
+# 시스템 로그 조회 (간단한 버전)
+@app.get("/admin/system-logs")
+async def get_system_logs(
+    page: int = 1,
+    limit: int = 50,
+    level: str = None,  # info, warning, error
+    db = Depends(get_db),
+    current_user: str = Depends(verify_token)
+):
+    """시스템 로그 조회 (기본적인 세션 로그)"""
+    try:
+        check_admin_permission(current_user)
+        
+        # 최근 세션 활동을 로그로 표시
+        query = db.query(SCTSession).order_by(SCTSession.created_at.desc())
+        
+        total_count = query.count()
+        offset = (page - 1) * limit
+        sessions = query.offset(offset).limit(limit).all()
+        
+        logs = []
+        for session in sessions:
+            # 세션 생성 로그
+            logs.append({
+                "timestamp": session.created_at.isoformat() if session.created_at else None,
+                "level": "info",
+                "action": "session_created",
+                "message": f"새 검사 세션 생성: {session.patient_name} (의사: {session.doctor_id})",
+                "details": {
+                    "session_id": session.session_id,
+                    "doctor_id": session.doctor_id,
+                    "patient_name": session.patient_name,
+                    "status": session.status
+                }
+            })
+            
+            # 세션 완료 로그 (완료된 경우)
+            if session.status == 'complete' and session.submitted_at:
+                logs.append({
+                    "timestamp": session.submitted_at.isoformat() if session.submitted_at else None,
+                    "level": "info",
+                    "action": "session_completed",
+                    "message": f"검사 완료: {session.patient_name} (의사: {session.doctor_id})",
+                    "details": {
+                        "session_id": session.session_id,
+                        "doctor_id": session.doctor_id,
+                        "patient_name": session.patient_name,
+                        "duration": str(session.submitted_at - session.created_at) if session.submitted_at and session.created_at else None
+                    }
+                })
+        
+        # 시간순 정렬
+        logs.sort(key=lambda x: x['timestamp'] or '', reverse=True)
+        
+        # 레벨 필터 적용
+        if level:
+            logs = [log for log in logs if log['level'] == level]
+        
+        total_pages = (total_count + limit - 1) // limit
+        
+        return {
+            "logs": logs[:limit],  # 페이징 적용
+            "pagination": {
+                "current_page": page,
+                "total_pages": total_pages,
+                "total_count": len(logs),
+                "per_page": limit
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 시스템 로그 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail=f"로그 조회 중 오류: {str(e)}")
+
+# 데이터베이스 정리 (관리자용)
+@app.post("/admin/cleanup")
+async def admin_cleanup_database(
+    days_old: int = 30,
+    dry_run: bool = True,
+    db = Depends(get_db),
+    current_user: str = Depends(verify_token)
+):
+    """데이터베이스 정리 (관리자용)"""
+    try:
+        check_admin_permission(current_user)
+        
+        logger.info(f"🧹 데이터베이스 정리 {'시뮬레이션' if dry_run else '실행'}: {days_old}일 이전 데이터")
+        
+        cleanup_date = get_kst_now() - timedelta(days=days_old)
+        
+        # 정리 대상 조회
+        old_expired_sessions = db.query(SCTSession).filter(
+            and_(
+                SCTSession.status == "expired",
+                SCTSession.created_at < cleanup_date.replace(tzinfo=None)
+            )
+        ).all()
+        
+        cleanup_summary = {
+            "cleanup_date": cleanup_date.isoformat(),
+            "days_old": days_old,
+            "dry_run": dry_run,
+            "sessions_to_cleanup": len(old_expired_sessions),
+            "cleanup_details": []
+        }
+        
+        if not dry_run:
+            cleanup_count = 0
+            for session in old_expired_sessions:
+                session_id = session.session_id
+                patient_name = session.patient_name
+                
+                # 관련 데이터 삭제
+                interpretations_deleted = db.query(SCTInterpretation).filter(
+                    SCTInterpretation.session_id == session_id
+                ).count()
+                
+                responses_deleted = db.query(SCTResponse).filter(
+                    SCTResponse.session_id == session_id
+                ).count()
+                
+                # 실제 삭제
+                db.query(SCTInterpretation).filter(
+                    SCTInterpretation.session_id == session_id
+                ).delete()
+                
+                db.query(SCTResponse).filter(
+                    SCTResponse.session_id == session_id
+                ).delete()
+                
+                db.delete(session)
+                cleanup_count += 1
+                
+                cleanup_summary["cleanup_details"].append({
+                    "session_id": session_id,
+                    "patient_name": patient_name,
+                    "responses_deleted": responses_deleted,
+                    "interpretations_deleted": interpretations_deleted
+                })
+            
+            db.commit()
+            cleanup_summary["actual_cleaned"] = cleanup_count
+            logger.info(f"✅ 정리 완료: {cleanup_count}개 세션 삭제")
+        
+        else:
+            # 시뮬레이션 모드
+            for session in old_expired_sessions:
+                interpretations_count = db.query(SCTInterpretation).filter(
+                    SCTInterpretation.session_id == session.session_id
+                ).count()
+                
+                responses_count = db.query(SCTResponse).filter(
+                    SCTResponse.session_id == session.session_id
+                ).count()
+                
+                cleanup_summary["cleanup_details"].append({
+                    "session_id": session.session_id,
+                    "patient_name": session.patient_name,
+                    "responses_to_delete": responses_count,
+                    "interpretations_to_delete": interpretations_count
+                })
+        
+        return cleanup_summary
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 데이터베이스 정리 오류: {e}")
+        if not dry_run:
+            db.rollback()
+        raise HTTPException(status_code=500, detail=f"정리 중 오류: {str(e)}")
 
 # ===== 기존 기능들 계속 =====
 
@@ -774,7 +1169,7 @@ async def get_session(session_id: str, db = Depends(get_db)):
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
         
         # 만료 확인
-        if session.expires_at < datetime.utcnow():
+        if session.expires_at and session.expires_at < get_kst_now().replace(tzinfo=None):
             session.status = "expired"
             db.commit()
             raise HTTPException(status_code=410, detail="만료된 세션입니다")
@@ -820,7 +1215,7 @@ async def get_session_items(session_id: str, db = Depends(get_db)):
         if not session:
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
         
-        if session.expires_at < datetime.utcnow():
+        if session.expires_at and session.expires_at < get_kst_now().replace(tzinfo=None):
             session.status = "expired"
             db.commit()
             raise HTTPException(status_code=410, detail="만료된 세션입니다")
@@ -866,7 +1261,7 @@ async def save_responses(
         if not session:
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
         
-        if session.expires_at < datetime.utcnow():
+        if session.expires_at and session.expires_at < get_kst_now().replace(tzinfo=None):
             raise HTTPException(status_code=410, detail="만료된 세션입니다")
         
         # 기존 응답 삭제
@@ -888,7 +1283,7 @@ async def save_responses(
         # 모든 문항에 답변이 있으면 완료 상태로 변경
         if saved_count >= 45:  # 최소 45개 이상 답변 시 완료로 간주
             session.status = "complete"
-            session.submitted_at = datetime.utcnow()
+            session.submitted_at = get_kst_now().replace(tzinfo=None)
             logger.info(f"✅ 세션 완료 처리: {session_id}")
         
         db.commit()
@@ -938,7 +1333,7 @@ async def get_categorical_analysis(session_id: str, db = Depends(get_db)):
             "session_id": session_id,
             "patient_name": session.patient_name,
             "categorized_responses": categorized_responses,
-            "analysis_date": datetime.utcnow().isoformat()
+            "analysis_date": get_kst_now().isoformat()
         }
         
     except HTTPException:
@@ -978,13 +1373,13 @@ async def generate_interpretation_endpoint(session_id: str, db = Depends(get_db)
         
         if existing_interpretation:
             existing_interpretation.interpretation = interpretation
-            existing_interpretation.created_at = datetime.utcnow()
+            existing_interpretation.created_at = get_kst_now().replace(tzinfo=None)
         else:
             new_interpretation = SCTInterpretation(
                 session_id=session_id,
                 interpretation=interpretation,
                 patient_name=session.patient_name,
-                created_at=datetime.utcnow()
+                created_at=get_kst_now().replace(tzinfo=None)
             )
             db.add(new_interpretation)
         
@@ -993,7 +1388,7 @@ async def generate_interpretation_endpoint(session_id: str, db = Depends(get_db)
         return {
             "session_id": session_id,
             "interpretation": interpretation,
-            "generated_at": datetime.utcnow().isoformat()
+            "generated_at": get_kst_now().isoformat()
         }
         
     except HTTPException:
@@ -1034,10 +1429,8 @@ async def get_interpretation_endpoint(session_id: str, db = Depends(get_db)):
         logger.error(f"❌ 해석 조회 오류: {e}")
         raise HTTPException(status_code=500, detail=f"해석 조회 중 오류: {str(e)}")
 
-# main.py의 generate_ai_interpretation 함수를 이것으로 교체하세요
-
 async def generate_ai_interpretation(responses: List[SCTResponse], patient_name: str) -> str:
-    """적정 길이의 상세한 SCT 해석을 생성합니다."""
+    """자연스럽고 전문적인 SCT 해석을 생성합니다."""
     if not openai_client:
         return generate_default_interpretation(responses, patient_name)
     
@@ -1068,26 +1461,27 @@ async def generate_ai_interpretation(responses: List[SCTResponse], patient_name:
         if items:
             category_text += f"\n【{category}】\n" + "\n".join(items) + "\n"
 
-    # 균형잡힌 상세 프롬프트 (5000자 목표)
+    # 자연스럽고 전문적인 프롬프트
     system_prompt = """당신은 25년 경력의 정신건강의학과 전문의이자 임상심리학자입니다. 
-SCT 문장완성검사의 전문가로서, 실용적이면서도 충분히 상세한 임상 해석을 제공해야 합니다.
+SCT 문장완성검사의 전문가로서, 임상에서 실제로 활용 가능한 종합적인 해석을 제공해야 합니다.
 
 ## 보고서 작성 원칙
-1. **실용성**: 임상에서 즉시 활용 가능한 정보 제공
-2. **구체성**: 각 영역별로 대표적 응답 2-3개씩 인용하며 분석
-3. **균형성**: 강점과 약점을 균형있게 제시
-4. **실행가능성**: 구체적이고 실현 가능한 치료 권고안 제시
-5. **적절한 분량**: 5000자 내외의 읽기 편한 길이
+1. **임상적 유용성**: 치료 계획 수립에 실질적으로 도움이 되는 정보 제공
+2. **구체성과 근거**: 각 영역별로 대표적 응답을 인용하며 분석
+3. **균형적 관점**: 강점과 취약성을 균형있게 제시
+4. **실행 가능성**: 구체적이고 현실적인 치료 권고안 제시
+5. **전문성**: 임상 용어를 적절히 사용하되 이해하기 쉽게 설명
 
 ## 해석 시 주의사항  
-- 진단보다는 기능적 평가에 집중
-- 각 영역별로 핵심 응답 인용하며 근거 제시
-- 치료적 개입의 우선순위 명확히 제시
-- 환자의 협력 가능성과 동기 평가 포함"""
+- 진단보다는 기능적 평가와 성격 구조 분석에 집중
+- 각 영역별로 핵심 응답을 인용하며 근거 제시
+- 치료적 개입의 우선순위를 명확히 제시
+- 환자의 협력 가능성과 동기 수준 평가 포함
+- 예후와 성장 잠재력에 대한 전문적 견해 제시"""
 
     user_prompt = f"""
 환자: {patient_name}
-검사일: {datetime.now().strftime('%Y년 %m월 %d일')}
+검사일: {get_kst_now().strftime('%Y년 %m월 %d일')}
 
 ## 전체 응답 (50문항)
 {responses_text}
@@ -1095,83 +1489,83 @@ SCT 문장완성검사의 전문가로서, 실용적이면서도 충분히 상�
 ## 카테고리별 분류
 {category_text}
 
-위 SCT 결과를 바탕으로 다음 구조로 **5000자 내외**의 실용적인 임상 해석 보고서를 작성해주세요:
+위 SCT 결과를 바탕으로 다음 구조로 **종합적이고 실용적인** 임상 해석 보고서를 작성해주세요:
 
 # SCT (문장완성검사) 임상 해석 보고서
 
-## 1. 검사 개요 (300자)
+## 1. 검사 개요
 - 환자 기본정보 및 검사 협조도
 - 응답 특성 및 전반적 인상
 
-## 2. 주요 심리적 특성 분석 (3200자)
+## 2. 주요 심리적 특성 분석
 
-### 2.1 가족관계 및 애착 패턴 (550자)
+### 2.1 가족관계 및 애착 패턴
 - 부모에 대한 인식과 가족 역동
 - **핵심 응답 2-3개 인용하며 분석**
 
-### 2.2 대인관계 및 사회적 기능 (550자)  
+### 2.2 대인관계 및 사회적 기능
 - 친밀감 형성 능력과 대인 신뢰도
 - **핵심 응답 2-3개 인용하며 분석**
 
-### 2.3 자아개념 및 정체성 (450자)
+### 2.3 자아개념 및 정체성
 - 자기 인식과 자존감 수준  
 - **핵심 응답 2개 인용하며 분석**
 
-### 2.4 정서조절 및 스트레스 대처 (550자)
+### 2.4 정서조절 및 스트레스 대처
 - 주요 정서 이슈와 대처 방식
 - **핵심 응답 2-3개 인용하며 분석**
 
-### 2.5 성역할 및 이성관계 (350자)
+### 2.5 성역할 및 이성관계
 - 성정체성과 이성에 대한 태도
 - **핵심 응답 1-2개 인용**
 
-### 2.6 미래전망 및 목표지향성 (350자)
+### 2.6 미래전망 및 목표지향성
 - 미래 계획과 동기 수준
 - **핵심 응답 1-2개 인용**
 
-### 2.7 과거경험 및 현실적응 (400자)
+### 2.7 과거경험 및 현실적응
 - 과거 경험의 영향과 현실 대처능력
 - **핵심 응답 1-2개 인용**
 
-## 3. 임상적 평가 (800자)
+## 3. 임상적 평가
 
-### 3.1 주요 방어기제 및 성격특성 (400자)
+### 3.1 주요 방어기제 및 성격특성
 - 사용하는 방어기제와 성격 구조
 
-### 3.2 정신병리학적 고려사항 (400자)  
+### 3.2 정신병리학적 고려사항
 - 관찰되는 증상 및 위험요소 평가
 
-## 4. 치료적 권고사항 (500자)
+## 4. 치료적 권고사항
 
-### 4.1 우선 개입 영역 (300자)
-- 즉시 다뤄야 할 핵심 이슈 3가지
+### 4.1 우선 개입 영역
+- 즉시 다뤄야 할 핵심 이슈
 
-### 4.2 생활관리 및 지원방안 (200자)
+### 4.2 생활관리 및 지원방안
 - 일상 개선방안과 사회적 지지체계
 
-## 5. 요약 및 예후 (500자)
-- 핵심 특성 3-4가지 요약
+## 5. 요약 및 예후
+- 핵심 특성 요약
 - 치료 예후와 협력 가능성
 - 재평가 권고시기
 - 환자 강점 및 성장 잠재력
 
-**전체 분량: 약 5000자 내외로 작성하되, 각 영역별로 구체적 응답을 인용하며 실용적인 정보 제공에 집중해주세요.**
+**각 영역별로 구체적 응답을 인용하며, 임상에서 실제로 활용 가능한 전문적이고 종합적인 해석을 제공해주세요.**
 """
 
     try:
-        # GPT-4o-mini 사용으로 비용 절약
+        # GPT-4o-mini 사용
         response = openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=6000,  # 5000자 목표 + 여유분
+            max_tokens=4000,
             temperature=0.2,
         )
         
         interpretation = response.choices[0].message.content
-        logger.info(f"✅ 적정 길이 해석 생성 완료: {len(interpretation)} 문자")
+        logger.info(f"✅ 전문적 해석 생성 완료: {len(interpretation)} 문자")
         return interpretation
         
     except Exception as e:
@@ -1185,7 +1579,7 @@ def generate_default_interpretation(responses: List[SCTResponse], patient_name: 
 
 ## 1. 검사 개요
 - **환자명**: {patient_name}
-- **검사 완료일**: {datetime.now().strftime('%Y년 %m월 %d일 %H시 %M분')}
+- **검사 완료일**: {get_kst_now().strftime('%Y년 %m월 %d일 %H시 %M분')}
 - **검사 협조도**: 총 {len(responses)}개 문항 완료
 
 ## 2. 임상적 소견
@@ -1208,7 +1602,7 @@ OpenAI API 연결 오류로 인해 자동 해석을 생성할 수 없습니다.
 
 ## 3. 권고사항
 - 전문 임상심리학자 또는 정신건강의학과 전문의의 직접 해석이 필요합니다.
-- 각 문항별 응답을 14개 주요 영역으로 분류하여 종합적으로 분석하시기 바랍니다.
+- 각 문항별 응답을 9개 주요 영역으로 분류하여 종합적으로 분석하시기 바랍니다.
 - 필요시 추가적인 심리검사나 임상면담을 고려하십시오.
 
 *본 보고서는 시스템 오류로 인한 임시 보고서입니다.*

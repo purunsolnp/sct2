@@ -1,0 +1,1261 @@
+<!-- 시스템 로그 탭 -->
+            <div id="logs-tab" class="tab-content">
+                <h2>📋 시스템 로그</h2>
+                
+                <div class="search-controls">
+                    <select id="log-level-filter" class="search-input" style="flex: 0 0 150px;">
+                        <option value="">모든 레벨</option>
+                        <option value="info">정보</option>
+                        <option value="warning">경고</option>
+                        <option value="error">오류</option>
+                    </select>
+                    <button onclick="refreshLogs()" class="button button-secondary">🔄 새로고침</button>
+                </div>
+                
+                <div id="logs-loading" class="loading" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p>로그를 불러오는 중...</p>
+                </div>
+                
+                <div id="logs-container"></div>
+                
+                <div class="pagination" id="logs-pagination" style="display: none;">
+                    <button onclick="goToLogsPage(1)" id="logs-first-page"><<</button>
+                    <button onclick="goToLogsPage(currentLogsPage - 1)" id="logs-prev-page"><</button>
+                    <div id="logs-page-numbers"></div>
+                    <button onclick="goToLogsPage(currentLogsPage + 1)" id="logs-next-page">></button>
+                    <button onclick="goToLogsPage(totalLogsPages)" id="logs-last-page">>></button>
+                </div>
+            </div>
+            
+            <!-- 시스템 관리 탭 -->
+            <div id="maintenance-tab" class="tab-content">
+                <h2>🔧 시스템 관리</h2>
+                
+                <div style="display: grid; gap: 20px;">
+                    <div style="background: #f7fafc; padding: 20px; border-radius: 8px; border-left: 4px solid #4299e1;">
+                        <h3>🗑️ 데이터베이스 정리</h3>
+                        <p>만료된 오래된 세션과 관련 데이터를 정리합니다.</p>
+                        <div style="margin: 15px 0;">
+                            <label for="cleanup-days">정리 기준 (일):</label>
+                            <input type="number" id="cleanup-days" value="30" min="7" max="365" style="margin-left: 10px; padding: 5px; border: 1px solid #ccc; border-radius: 4px;">
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button onclick="simulateCleanup()" class="button button-secondary">🧪 시뮬레이션</button>
+                            <button onclick="executeCleanup()" class="button button-danger">🗑️ 실행</button>
+                        </div>
+                        <div id="cleanup-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <div style="background: #fff3cd; padding: 20px; border-radius: 8px; border-left: 4px solid #ffd700;">
+                        <h3>⚠️ 시스템 상태</h3>
+                        <div id="system-status">
+                            <p>✅ 데이터베이스: 연결됨</p>
+                            <p>✅ OpenAI API: 정상</p>
+                            <p>✅ 메모리 사용량: 정상</p>
+                        </div>
+                        <button onclick="checkSystemHealth()" class="button button-secondary" style="margin-top: 10px;">🔍 상태 확인</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        const API_BASE = 'https://sct-backend-7epf.onrender.com';
+        let adminId = '';
+        let adminName = '';
+        let currentUsersPage = 1;
+        let totalUsersPages = 1;
+        let currentLogsPage = 1;
+        let totalLogsPages = 1;
+        let monthlyChart = null;
+        let usageChart = null;
+        
+        // API 헤더
+        function getApiHeaders() {
+            const token = localStorage.getItem('access_token');
+            return {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            };
+        }
+        
+        // 페이지 로드 시 실행
+        document.addEventListener('DOMContentLoaded', function() {
+            // 로그인 확인
+            const currentUser = localStorage.getItem('currentUser');
+            if (!currentUser) {
+                alert('로그인이 필요합니다.');
+                window.location.href = 'login.html';
+                return;
+            }
+            
+            const userData = JSON.parse(currentUser);
+            adminId = userData.doctorId;
+            adminName = userData.name;
+            
+            // 관리자 권한 확인 (임시)
+            if (!['admin', 'doctor1'].includes(adminId)) {
+                alert('관리자 권한이 필요합니다.');
+                window.location.href = 'doctor.html';
+                return;
+            }
+            
+            document.getElementById('admin-id').textContent = adminId;
+            document.getElementById('admin-name').textContent = adminName;
+            
+            // 초기 데이터 로드
+            loadDashboardStats();
+            loadMonthlyChart();
+            
+            // 검색 이벤트 설정
+            document.getElementById('user-search').addEventListener('input', debounce(searchUsers, 500));
+            document.getElementById('log-level-filter').addEventListener('change', refreshLogs);
+        });
+        
+        // 디바운스 함수
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+        
+        // 로그아웃
+        function logout() {
+            if (confirm('정말 로그아웃 하시겠습니까?')) {
+                localStorage.removeItem('currentUser');
+                localStorage.removeItem('access_token');
+                window.location.href = 'login.html';
+            }
+        }
+        
+        // 탭 전환
+        function switchTab(tabName) {
+            // 모든 탭 비활성화
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            
+            // 선택된 탭 활성화
+            document.querySelector(`[onclick="switchTab('${tabName}')"]`).classList.add('active');
+            document.getElementById(`${tabName}-tab`).classList.add('active');
+            
+            // 탭별 데이터 로드
+            switch(tabName) {
+                case 'users':
+                    loadUsers();
+                    break;
+                case 'analytics':
+                    loadAnalytics();
+                    break;
+                case 'logs':
+                    loadLogs();
+                    break;
+                case 'maintenance':
+                    checkSystemHealth();
+                    break;
+            }
+        }
+        
+        // 대시보드 통계 로드
+        async function loadDashboardStats() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/dashboard/stats`, {
+                    headers: getApiHeaders()
+                });
+                
+                if (!response.ok) {
+                    throw new Error('통계 로드 실패');
+                }
+                
+                const data = await response.json();
+                
+                document.getElementById('total-users').textContent = data.total_users;
+                document.getElementById('total-sessions').textContent = data.total_sessions;
+                document.getElementById('month-sessions').textContent = data.this_month_sessions;
+                document.getElementById('pending-sessions').textContent = data.pending_sessions;
+                
+                document.getElementById('active-users-info').textContent = `활성 사용자: ${data.active_users}명`;
+                document.getElementById('completion-rate').textContent = `완료율: ${data.completion_rate}%`;
+                document.getElementById('month-completed').textContent = `완료: ${data.this_month_completed}건`;
+                document.getElementById('expired-sessions-info').textContent = `만료: ${data.expired_sessions}건`;
+                
+            } catch (error) {
+                console.error('통계 로드 오류:', error);
+            }
+        }
+        
+        // 월별 차트 로드
+        async function loadMonthlyChart() {
+            try {
+                const response = await fetch(`${API_BASE}/admin/usage-stats?months=12`, {
+                    headers: getApiHeaders()
+                });
+                
+                if (!response.ok) {
+                    throw new Error('월별 통계 로드 실패');
+                }
+                
+                const data = await response.json();
+                
+                const ctx = document.getElementById('monthlyChart').getContext('2d');
+                
+                if (monthlyChart) {
+                    monthlyChart.destroy();
+                }
+                
+                monthlyChart = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: data.monthly_stats.map(stat => stat.month_name),
+                        datasets: [{
+                            label: '총 검사 수',
+                            data: data.monthly_stats.map(stat => stat.total_sessions),
+                            backgroundColor: 'rgba(66, 153, 225, 0.8)',
+                            borderColor: 'rgba(66, 153, 225, 1)',
+                            borderWidth: 1
+                        }, {
+                            label: '완료된 검사',
+                            data: data.monthly_stats.map(stat => stat.completed_sessions),
+                            backgroundColor: 'rgba(56, 161, 105, 0.8)',
+                            borderColor: 'rgba(56, 161, 105, 1)',
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: '월별 검사 실행 현황'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true
+                            }
+                        }
+                    }
+                });
+                
+            } catch (error) {
+                console.error('월별 차트 로드 오류:', error);
+            }
+        }
+        
+        // 사용자 목록 로드
+        async function loadUsers(page = 1, search = '') {
+            document.getElementById('users-loading').style.display = 'block';
+            document.getElementById('users-table').style.display = 'none';
+            document.getElementById('users-pagination').style.display = 'none';
+            
+            try {
+                const url = new URL(`${API_BASE}/admin/users`);
+                url.searchParams.append('page', page);
+                url.searchParams.append('limit', 10);
+                if (search) url.searchParams.append('search', search);
+                
+                const response = await fetch(url, {
+                    headers: getApiHeaders()
+                });
+                
+                if (!response.ok) {
+                    throw new Error('사용자 목록 로드 실패');
+                }
+                
+                const data = await response.json();
+                
+                currentUsersPage = data.pagination.current_page;
+                totalUsersPages = data.pagination.total_pages;
+                
+                renderUsersTable(data.users);
+                renderUsersPagination();
+                
+                document.getElementById('users-loading').style.display = 'none';
+                document.getElementById('users-table').style.display = 'table';
+                document.getElementById('users-pagination').style.display = 'flex';
+                
+            } catch (error) {
+                console.error('사용자 목록 로드 오류:', error);
+                document.getElementById('users-loading').style.display = 'none';
+            }
+        }
+        
+        // 사용자 테이블 렌더링
+        function renderUsersTable(users) {
+            const tbody = document.getElementById('users-tbody');
+            tbody.innerHTML = '';
+            
+            users.forEach(user => {
+                const row = document.createElement('tr');
+                
+                const lastActivity = user.last_activity ? 
+                    new Date(user.last_activity).toLocaleDateString('ko-KR') : '-';
+                const createdAt = user.created_at ? 
+                    new Date(user.created_at).toLocaleDateString('ko-KR') : '-';
+                
+                const statusBadge = user.is_verified ? 
+                    '<span class="user-badge verified">인증됨</span>' : 
+                    '<span class="user-badge inactive">미인증</span>';
+                
+                const activeBadge = user.is_active ? 
+                    '<span class="user-badge active">활성</span>' : 
+                    '<span class="user-badge inactive">비활성</span>';
+                
+                row.innerHTML = `
+                    <td>
+                        <div><strong>${user.name}</strong></div>
+                        <div style="font-size: 0.8em; color: #666;">${user.doctor_id}</div>
+                        <div style="font-size: 0.8em; color: #666;">${user.email}</div>
+                    </td>
+                    <td>
+                        <div>${user.specialty}</div>
+                        <div style="font-size: 0.8em; color: #666;">${user.hospital}</div>
+                    </td>
+                    <td>${user.phone || '-'}</td>
+                    <td>${createdAt}</td>
+                    <td>
+                        <div>${lastActivity}</div>
+                        <div>${activeBadge}</div>
+                    </td>
+                    <td>
+                        <div>총: ${user.total_sessions}건</div>
+                        <div>완료: ${user.completed_sessions}건</div>
+                        <div style="font-size: 0.8em; color: #666;">30일: ${user.recent_30days_sessions}건</div>
+                    </td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <label class="status-toggle">
+                            <input type="checkbox" ${user.is_verified ? 'checked' : ''} 
+                                   onchange="toggleUserStatus('${user.doctor_id}', this.checked)">
+                            <span class="slider"></span>
+                        </label>
+                    </td>
+                `;
+                
+                tbody.appendChild(row);
+            });
+        }
+        
+        // 사용자 페이징 렌더링
+        function renderUsersPagination() {
+            const pageNumbers = document.getElementById('users-page-numbers');
+            pageNumbers.innerHTML = '';
+            
+            document.getElementById('users-first-page').disabled = currentUsersPage === 1;
+            document.getElementById('users-prev-page').disabled = currentUsersPage === 1;
+            document.getElementById('users-next-page').disabled = currentUsersPage === totalUsersPages;
+            document.getElementById('users-last-page').disabled = currentUsersPage === totalUsersPages;
+            
+            const maxVisible = 5;
+            let start = Math.max(1, currentUsersPage - Math.floor(maxVisible / 2));
+            let end = Math.min(totalUsersPages, start + maxVisible - 1);
+            
+            if (end - start + 1 < maxVisible) {
+                start = Math.max(1, end - maxVisible + 1);
+            }
+            
+            for (let i = start; i <= end; i++) {
+                const button = document.createElement('button');
+                button.textContent = i;
+                button.onclick = () => goToUsersPage(i);
+                if (i === currentUsersPage) {
+                    button.classList.add('active');
+                }
+                pageNumbers.appendChild(button);
+            }
+        }
+        
+        // 사용자 페이지 이동
+        function goToUsersPage(page) {
+            if (page < 1 || page > totalUsersPages) return;
+            const search = document.getElementById('user-search').value;
+            loadUsers(page, search);
+        }
+        
+        // 사용자 검색
+        function searchUsers() {
+            const search = document.getElementById('user-search').value;
+            loadUsers(1, search);
+        }
+        
+        // 사용자 새로고침
+        function refreshUsers() {
+            const search = document.getElementById('user-search').value;
+            loadUsers(currentUsersPage, search);
+        }
+        
+        // 사용자 상태 토글
+        async function toggleUserStatus(doctorId, isVerified) {
+            try {
+                const response = await fetch(`${API_BASE}/admin/users/${doctorId}/status`, {
+                    method: 'PATCH',
+                    headers: getApiHeaders(),
+                    body: JSON.stringify({ is_verified: isVerified })
+                });
+                
+                if (!response.ok) {
+                    throw new Error('사용자 상태 변경 실패');
+                }
+                
+                const result = await response.json();
+                alert(result.message);
+                
+                // 목록 새로고침
+                refreshUsers();
+                
+            } catch (error) {
+                console.error('사용자 상태 변경 오류:', error);
+                alert('상태 변경 중 오류가 발생했습니다.');
+                
+                // 체크박스 원래 상태로 복원
+                refreshUsers();
+            }
+        }
+        
+        // 분석 데이터 로드
+        async function loadAnalytics() {
+            document.getElementById('analytics-loading').style.display = 'block';
+            document.getElementById('analytics-content').style.display = 'none';
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/usage-stats?months=6`, {
+                    headers: getApiHeaders()
+                });
+                
+                if (!response.ok) {
+                    throw new Error('분석 데이터 로드 실패');
+                }
+                
+                const data = await response.json();
+                
+                // 사용률 차트 생성
+                const ctx = document.getElementById('usageChart').getContext('2d');
+                
+                if (usageChart) {
+                    usageChart.destroy();
+                }
+                
+                usageChart = new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: data.monthly_stats.map(stat => stat.month_name),
+                        datasets: [{
+                            label: '활성 사용자',
+                            data: data.monthly_stats.map(stat => stat.active_users),
+                            borderColor: 'rgba(66, 153, 225, 1)',
+                            backgroundColor: 'rgba(66, 153, 225, 0.1)',
+                            tension: 0.4
+                        }, {
+                            label: '완료율 (%)',
+                            data: data.monthly_stats.map(stat => stat.completion_rate),
+                            borderColor: 'rgba(56, 161, 105, 1)',
+                            backgroundColor: 'rgba(56, 161, 105, 0.1)',
+                            tension: 0.4,
+                            yAxisID: 'y1'
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: '시스템 사용률 분석'
+                            }
+                        },
+                        scales: {
+                            y: {
+                                type: 'linear',
+                                display: true,
+                                position: 'left',
+                            },
+                            y1: {
+                                type: 'linear',
+                                display: true,
+                                position: 'right',
+                                grid: {
+                                    drawOnChartArea: false,
+                                },
+                            }
+                        }
+                    }
+                });
+                
+                // 요약 정보 생성
+                const summaryHtml = `
+                    <h3>📊 분석 요약</h3>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-top: 15px;">
+                        <div style="background: #f7fafc; padding: 15px; border-radius: 8px;">
+                            <div style="font-weight: bold; color: #2d3748;">평균 완료율</div>
+                            <div style="font-size: 1.5em; color: #4299e1;">${(data.monthly_stats.reduce((acc, stat) => acc + stat.completion_rate, 0) / data.monthly_stats.length).toFixed(1)}%</div>
+                        </div>
+                        <div style="background: #f7fafc; padding: 15px; border-radius: 8px;">
+                            <div style="font-weight: bold; color: #2d3748;">월평균 검사 수</div>
+                            <div style="font-size: 1.5em; color: #38a169;">${Math.round(data.monthly_stats.reduce((acc, stat) => acc + stat.total_sessions, 0) / data.monthly_stats.length)}건</div>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('analytics-summary').innerHTML = summaryHtml;
+                
+                document.getElementById('analytics-loading').style.display = 'none';
+                document.getElementById('analytics-content').style.display = 'block';
+                
+            } catch (error) {
+                console.error('분석 데이터 로드 오류:', error);
+                document.getElementById('analytics-loading').style.display = 'none';
+            }
+        }
+        
+        // 로그 로드
+        async function loadLogs(page = 1) {
+            document.getElementById('logs-loading').style.display = 'block';
+            
+            try {
+                const level = document.getElementById('log-level-filter').value;
+                const url = new URL(`${API_BASE}/admin/system-logs`);
+                url.searchParams.append('page', page);
+                url.searchParams.append('limit', 20);
+                if (level) url.searchParams.append('level', level);
+                
+                const response = await fetch(url, {
+                    headers: getApiHeaders()
+                });
+                
+                if (!response.ok) {
+                    throw new Error('로그 로드 실패');
+                }
+                
+                const data = await response.json();
+                
+                currentLogsPage = data.pagination.current_page;
+                totalLogsPages = data.pagination.total_pages;
+                
+                renderLogs(data.logs);
+                renderLogsPagination();
+                
+                document.getElementById('logs-loading').style.display = 'none';
+                
+            } catch (error) {
+                console.error('로그 로드 오류:', error);
+                document.getElementById('logs-loading').style.display = 'none';
+            }
+        }
+        
+        // 로그 렌더링
+        function renderLogs(logs) {
+            const container = document.getElementById('logs-container');
+            container.innerHTML = '';
+            
+            if (logs.length === 0) {
+                container.innerHTML = '<p style="text-align: center; color: #718096; padding: 40px;">로그가 없습니다.</p>';
+                return;
+            }
+            
+            logs.forEach(log => {
+                const logEntry = document.createElement('div');
+                logEntry.className = 'log-entry';
+                
+                const timestamp = log.timestamp ? 
+                    new Date(log.timestamp).toLocaleString('ko-KR') : '-';
+                
+                logEntry.innerHTML = `
+                    <div class="log-timestamp">${timestamp}</div>
+                    <div class="log-message">${log.message}</div>
+                    ${log.details ? `<div class="log-details">세부사항: ${JSON.stringify(log.details)}</div>` : ''}
+                `;
+                
+                container.appendChild(logEntry);
+            });
+        }
+        
+        // 로그 페이징 렌더링
+        function renderLogsPagination() {
+            if (totalLogsPages <= 1) {
+                document.getElementById('logs-pagination').style.display = 'none';
+                return;
+            }
+            
+            document.getElementById('logs-pagination').style.display = 'flex';
+            
+            const pageNumbers = document.getElementById('logs-page-numbers');
+            pageNumbers.innerHTML = '';
+            
+            document.getElementById('logs-first-page').disabled = currentLogsPage === 1;
+            document.getElementById('logs-prev-page').disabled = currentLogsPage === 1;
+            document.getElementById('logs-next-page').disabled = currentLogsPage === totalLogsPages;
+            document.getElementById('logs-last-page').disabled = currentLogsPage === totalLogsPages;
+            
+            const maxVisible = 5;
+            let start = Math.max(1, currentLogsPage - Math.floor(maxVisible / 2));
+            let end = Math.min(totalLogsPages, start + maxVisible - 1);
+            
+            for (let i = start; i <= end; i++) {
+                const button = document.createElement('button');
+                button.textContent = i;
+                button.onclick = () => goToLogsPage(i);
+                if (i === currentLogsPage) {
+                    button.classList.add('active');
+                }
+                pageNumbers.appendChild(button);
+            }
+        }
+        
+        // 로그 페이지 이동
+        function goToLogsPage(page) {
+            if (page < 1 || page > totalLogsPages) return;
+            loadLogs(page);
+        }
+        
+        // 로그 새로고침
+        function refreshLogs() {
+            loadLogs(1);
+        }
+        
+        // 시스템 상태 확인
+        async function checkSystemHealth() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                const data = await response.json();
+                
+                const statusHtml = `
+                    <p>✅ 데이터베이스: ${data.database.status === 'healthy' ? '정상' : '오류'}</p>
+                    <p>✅ OpenAI API: ${data.openai === 'available' ? '정상' : '비활성'}</p>
+                    <p>✅ 서버 시간: ${new Date(data.timestamp).toLocaleString('ko-KR')}</p>
+                `;
+                
+                document.getElementById('system-status').innerHTML = statusHtml;
+                
+            } catch (error) {
+                console.error('시스템 상태 확인 오류:', error);
+                document.getElementById('system-status').innerHTML = '<p>❌ 시스템 상태 확인 실패</p>';
+            }
+        }
+        
+        // 정리 시뮬레이션
+        async function simulateCleanup() {
+            const days = document.getElementById('cleanup-days').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/cleanup?days_old=${days}&dry_run=true`, {
+                    method: 'POST',
+                    headers: getApiHeaders()
+                });
+                
+                if (!response.ok) {
+                    throw new Error('시뮬레이션 실패');
+                }
+                
+                const data = await response.json();
+                
+                const resultHtml = `
+                    <div style="background: #e6fffa; padding: 15px; border-radius: 8px; border-left: 4px solid #38b2ac;">
+                        <h4>🧪 시뮬레이션 결과</h4>
+                        <p><strong>정리 대상:</strong> ${days}일 이전 만료된 세션</p>
+                        <p><strong>삭제될 세션 수:</strong> ${data.sessions_to_cleanup}개</p>
+                        <p><strong>삭제될 총 데이터:</strong></p>
+                        <ul>
+                            <li>응답 데이터: ${data.cleanup_details.reduce((acc, item) => acc + (item.responses_to_delete || 0), 0)}개</li>
+                            <li>해석 결과: ${data.cleanup_details.reduce((acc, item) => acc + (item.interpretations_to_delete || 0), 0)}개</li>
+                        </ul>
+                        <p style="margin-top: 10px;"><em>※ 이것은 시뮬레이션이며 실제 데이터는 삭제되지 않았습니다.</em></p>
+                    </div>
+                `;
+                
+                document.getElementById('cleanup-result').innerHTML = resultHtml;
+                
+                // 통계 새로고침
+                loadDashboardStats();
+                
+            } catch (error) {
+                console.error('정리 실행 오류:', error);
+                document.getElementById('cleanup-result').innerHTML = 
+                    '<div style="background: #fed7d7; padding: 15px; border-radius: 8px;">❌ 정리 실행 실패</div>';
+            }
+        }
+    </script>
+</body>
+</html>;
+                
+            } catch (error) {
+                console.error('시뮬레이션 오류:', error);
+                document.getElementById('cleanup-result').innerHTML = 
+                    '<div style="background: #fed7d7; padding: 15px; border-radius: 8px;">❌ 시뮬레이션 실패</div>';
+            }
+        }
+        
+        // 정리 실행
+        async function executeCleanup() {
+            const days = document.getElementById('cleanup-days').value;
+            
+            if (!confirm(`정말로 ${days}일 이전의 만료된 데이터를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다.`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`${API_BASE}/admin/cleanup?days_old=${days}&dry_run=false`, {
+                    method: 'POST',
+                    headers: getApiHeaders()
+                });
+                
+                if (!response.ok) {
+                    throw new Error('정리 실행 실패');
+                }
+                
+                const data = await response.json();
+                
+                const resultHtml = `
+                    <div style="background: #c6f6d5; padding: 15px; border-radius: 8px; border-left: 4px solid #38a169;">
+                        <h4>✅ 정리 완료</h4>
+                        <p><strong>삭제된 세션 수:</strong> ${data.actual_cleaned}개</p>
+                        <p><strong>정리 완료 시간:</strong> ${new Date().toLocaleString('ko-KR')}</p>
+                    </div>
+                `;
+                
+                document.getElementById('cleanup-result').innerHTML = resultHtml<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCT 시스템 관리자</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f7fa;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 0;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .header h1 {
+            font-size: 1.8em;
+            font-weight: 600;
+        }
+        
+        .admin-info {
+            font-size: 0.9em;
+            opacity: 0.9;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logout-btn {
+            background: rgba(255,255,255,0.2);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.3);
+            padding: 8px 15px;
+            border-radius: 6px;
+            font-size: 0.85em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .logout-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateY(-1px);
+        }
+        
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 30px 20px;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+        }
+        
+        .card h2 {
+            color: #2d3748;
+            margin-bottom: 20px;
+            font-size: 1.5em;
+            font-weight: 600;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, #4299e1, #667eea);
+        }
+        
+        .stat-number {
+            font-size: 2.5em;
+            font-weight: bold;
+            color: #4299e1;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            color: #718096;
+            font-size: 0.9em;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+        
+        .stat-change {
+            font-size: 0.8em;
+            color: #38a169;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 25px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .tab {
+            padding: 12px 20px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            font-weight: 600;
+            color: #718096;
+            transition: all 0.3s ease;
+            font-size: 0.95em;
+        }
+        
+        .tab.active {
+            color: #4299e1;
+            border-bottom-color: #4299e1;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+        
+        .users-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        
+        .users-table th,
+        .users-table td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        
+        .users-table th {
+            background: #f7fafc;
+            font-weight: 600;
+            color: #4a5568;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .users-table tr:hover {
+            background: #f7fafc;
+        }
+        
+        .status-toggle {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 24px;
+        }
+        
+        .status-toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+        
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 24px;
+        }
+        
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 3px;
+            bottom: 3px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+        
+        input:checked + .slider {
+            background-color: #4299e1;
+        }
+        
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+        
+        .user-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 12px;
+            font-size: 0.8em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .user-badge.active {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+        
+        .user-badge.inactive {
+            background: #fed7d7;
+            color: #c53030;
+        }
+        
+        .user-badge.verified {
+            background: #bee3f8;
+            color: #2b6cb0;
+        }
+        
+        .search-controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+            align-items: center;
+        }
+        
+        .search-input {
+            flex: 1;
+            padding: 10px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 0.95em;
+        }
+        
+        .search-input:focus {
+            border-color: #4299e1;
+            outline: none;
+        }
+        
+        .button {
+            background: linear-gradient(135deg, #4299e1, #667eea);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-size: 0.95em;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+        
+        .button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(66, 153, 225, 0.3);
+        }
+        
+        .button-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+            border: 2px solid #cbd5e0;
+        }
+        
+        .button-secondary:hover {
+            background: #cbd5e0;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .button-danger {
+            background: linear-gradient(135deg, #e53e3e, #fc8181);
+        }
+        
+        .button-danger:hover {
+            box-shadow: 0 8px 25px rgba(229, 62, 62, 0.3);
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin: 20px 0;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px 20px;
+            color: #718096;
+        }
+        
+        .loading-spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #4299e1;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .pagination {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-top: 20px;
+        }
+        
+        .pagination button {
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            background: white;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .pagination button:hover:not(:disabled) {
+            background: #f7fafc;
+            border-color: #4299e1;
+        }
+        
+        .pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pagination button.active {
+            background: #4299e1;
+            color: white;
+            border-color: #4299e1;
+        }
+        
+        .log-entry {
+            padding: 12px;
+            margin-bottom: 8px;
+            border-left: 4px solid #4299e1;
+            background: #f7fafc;
+            border-radius: 4px;
+        }
+        
+        .log-timestamp {
+            font-size: 0.8em;
+            color: #718096;
+            margin-bottom: 4px;
+        }
+        
+        .log-message {
+            font-weight: 500;
+            color: #2d3748;
+        }
+        
+        .log-details {
+            font-size: 0.9em;
+            color: #4a5568;
+            margin-top: 4px;
+        }
+        
+        /* 반응형 */
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .search-controls {
+                flex-direction: column;
+                align-items: stretch;
+            }
+            
+            .users-table {
+                font-size: 0.9em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-content">
+            <h1>🔧 SCT 시스템 관리자</h1>
+            <div class="admin-info">
+                <div>
+                    <strong>관리자:</strong> <span id="admin-name">로딩중...</span><br>
+                    <small>ID: <span id="admin-id">로딩중...</span></small>
+                </div>
+                <button onclick="logout()" class="logout-btn">🚪 로그아웃</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <!-- 통계 카드 -->
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-number" id="total-users">0</div>
+                <div class="stat-label">총 사용자</div>
+                <div class="stat-change" id="active-users-info">활성 사용자: 0명</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="total-sessions">0</div>
+                <div class="stat-label">총 검사 세션</div>
+                <div class="stat-change" id="completion-rate">완료율: 0%</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="month-sessions">0</div>
+                <div class="stat-label">이달의 검사</div>
+                <div class="stat-change" id="month-completed">완료: 0건</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-number" id="pending-sessions">0</div>
+                <div class="stat-label">대기 중 검사</div>
+                <div class="stat-change" id="expired-sessions-info">만료: 0건</div>
+            </div>
+        </div>
+        
+        <!-- 탭 메뉴 -->
+        <div class="card">
+            <div class="tabs">
+                <button class="tab active" onclick="switchTab('dashboard')">📊 대시보드</button>
+                <button class="tab" onclick="switchTab('users')">👥 사용자 관리</button>
+                <button class="tab" onclick="switchTab('analytics')">📈 통계 분석</button>
+                <button class="tab" onclick="switchTab('logs')">📋 시스템 로그</button>
+                <button class="tab" onclick="switchTab('maintenance')">🔧 시스템 관리</button>
+            </div>
+            
+            <!-- 대시보드 탭 -->
+            <div id="dashboard-tab" class="tab-content active">
+                <h2>📊 시스템 현황</h2>
+                <div class="chart-container">
+                    <canvas id="monthlyChart"></canvas>
+                </div>
+                <p>최근 12개월간 검사 실행 현황을 보여줍니다.</p>
+            </div>
+            
+            <!-- 사용자 관리 탭 -->
+            <div id="users-tab" class="tab-content">
+                <h2>👥 사용자 관리</h2>
+                
+                <div class="search-controls">
+                    <input type="text" class="search-input" id="user-search" placeholder="🔍 사용자 검색 (ID, 이름, 이메일, 병원)">
+                    <button onclick="refreshUsers()" class="button button-secondary">🔄 새로고침</button>
+                </div>
+                
+                <div id="users-loading" class="loading" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p>사용자 목록을 불러오는 중...</p>
+                </div>
+                
+                <table class="users-table" id="users-table" style="display: none;">
+                    <thead>
+                        <tr>
+                            <th>사용자 정보</th>
+                            <th>소속</th>
+                            <th>연락처</th>
+                            <th>가입일</th>
+                            <th>최근 활동</th>
+                            <th>검사 수행</th>
+                            <th>상태</th>
+                            <th>관리</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-tbody">
+                    </tbody>
+                </table>
+                
+                <div class="pagination" id="users-pagination" style="display: none;">
+                    <button onclick="goToUsersPage(1)" id="users-first-page"><<</button>
+                    <button onclick="goToUsersPage(currentUsersPage - 1)" id="users-prev-page"><</button>
+                    <div id="users-page-numbers"></div>
+                    <button onclick="goToUsersPage(currentUsersPage + 1)" id="users-next-page">></button>
+                    <button onclick="goToUsersPage(totalUsersPages)" id="users-last-page">>></button>
+                </div>
+            </div>
+            
+            <!-- 통계 분석 탭 -->
+            <div id="analytics-tab" class="tab-content">
+                <h2>📈 상세 통계 분석</h2>
+                <div id="analytics-loading" class="loading">
+                    <div class="loading-spinner"></div>
+                    <p>통계 데이터를 분석하는 중...</p>
+                </div>
+                <div id="analytics-content" style="display: none;">
+                    <div class="chart-container">
+                        <canvas id="usageChart"></canvas>
+                    </div>
+                    <div id="analytics-summary"></div>
+                </div>
+            </div>
+            
+            <!-- 시스템 로그 탭 -->
+            <div id="logs-tab" class="tab-content">

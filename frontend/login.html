@@ -295,34 +295,6 @@
         const API_BASE = "https://sct-backend-7epf.onrender.com";
         // ======================================
         
-        // 👇 바로 여기에 함수 추가!
-        async function safeApiCall(url, options = {}) {
-            try {
-                console.log('API 호출 시도:', url);
-                
-                const response = await fetch(url, {
-                    ...options,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...options.headers
-                    }
-                });
-                
-                console.log('응답 받음:', response.status);
-                
-                if (!response.ok) {
-                    throw new Error(`서버 오류: ${response.status}`);
-                }
-                
-                return await response.json();
-            } catch (error) {
-                console.error('API 오류:', error);
-                alert('서버 연결에 문제가 있습니다. 잠시 후 다시 시도해주세요.');
-                throw error;
-            }
-        }
-        
-        
         // 페이지 로드 시 실행
         document.addEventListener('DOMContentLoaded', function() {
             // 이미 로그인되어 있으면 대시보드로 리다이렉트
@@ -335,61 +307,98 @@
             // 폼 제출 이벤트
             const loginForm = document.getElementById('login-form');
             if (loginForm) {
-                loginForm.onsubmit = handleLogin;
+                loginForm.addEventListener('submit', handleLogin);
             }
         });
         
-        // 로그인 처리
+        // 🚨 수정된 로그인 처리 함수
         async function handleLogin(e) {
             e.preventDefault();
+            
             const doctorIdInput = document.getElementById('doctor-id');
             const passwordInput = document.getElementById('password');
+            const loginBtn = document.getElementById('login-btn');
+            
             if (!doctorIdInput || !passwordInput) {
-                alert('입력란을 찾을 수 없습니다.');
+                showAlert('입력란을 찾을 수 없습니다.', 'error');
                 return;
             }
+            
             const doctorId = doctorIdInput.value.trim();
             const password = passwordInput.value;
+            
             if (!doctorId || !password) {
-                alert('ID와 비밀번호를 모두 입력해주세요.');
+                showAlert('ID와 비밀번호를 모두 입력해주세요.', 'error');
                 return;
             }
-            try {
-                const res = await fetch(`${API_BASE}/auth/login`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ doctor_id: doctorId, password })
-                });
-                const data = await res.json();
-                if (res.ok && data.access_token) {
-                    localStorage.setItem('token', data.access_token);
-                    localStorage.setItem('doctor_id', doctorId);
-                    
-                    // 계정 타입에 따라 다른 페이지로 리디렉션
-                    if (doctorId === 'admin') {
-                        window.location.href = 'admin.html';
-                    } else {
-                        window.location.href = 'doctor.html';
-                    }
-                } else if (data.detail) {
-                    alert(data.detail); // 서버 에러 메시지
-                } else {
-                    alert('로그인 실패: 알 수 없는 오류');
-                }
-            } catch (err) {
-                alert('서버 연결 오류');
-            }
-        }
-        
-        // 데모 계정 확인
-        function isDemoAccount(doctorId, password) {
-            const demoAccounts = {
-                'doctor1': 'password123',
-                'doctor2': 'password123', 
-                'admin': 'admin123'
-            };
             
-            return demoAccounts[doctorId] === password;
+            // 로딩 상태 설정
+            const originalText = loginBtn.innerHTML;
+            loginBtn.disabled = true;
+            loginBtn.innerHTML = '<div class="loading-spinner"></div>로그인 중...';
+            
+            try {
+                console.log('로그인 시도:', doctorId);
+                
+                const response = await fetch(`${API_BASE}/auth/login`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json' 
+                    },
+                    body: JSON.stringify({ 
+                        doctor_id: doctorId, 
+                        password: password 
+                    })
+                });
+                
+                console.log('로그인 응답 상태:', response.status);
+                
+                const data = await response.json();
+                console.log('로그인 응답 데이터:', data);
+                
+                if (response.ok && data.access_token) {
+                    // ✅ 로그인 성공 처리
+                    
+                    // 토큰 저장
+                    localStorage.setItem('access_token', data.access_token);
+                    
+                    // 사용자 정보 저장
+                    const userData = {
+                        doctorId: doctorId,
+                        name: data.name || getDemoAccountName(doctorId),
+                        email: data.email || `${doctorId}@hospital.com`,
+                        specialty: data.specialty || 'General'
+                    };
+                    localStorage.setItem('currentUser', JSON.stringify(userData));
+                    
+                    console.log('로그인 성공, 사용자 데이터 저장:', userData);
+                    
+                    showAlert('로그인 성공! 관리 페이지로 이동합니다...', 'success');
+                    
+                    // 🎯 올바른 페이지로 리디렉션
+                    setTimeout(() => {
+                        if (doctorId === 'admin') {
+                            window.location.href = 'admin.html'; // 관리자는 admin.html로
+                        } else {
+                            window.location.href = 'doctor.html'; // 의사는 doctor.html로
+                        }
+                    }, 1500);
+                    
+                } else {
+                    // ❌ 로그인 실패 처리
+                    const errorMessage = data.detail || data.message || '로그인에 실패했습니다.';
+                    console.error('로그인 실패:', errorMessage);
+                    showAlert(errorMessage, 'error');
+                }
+                
+            } catch (error) {
+                console.error('로그인 요청 오류:', error);
+                showAlert('서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.', 'error');
+            } finally {
+                // 로딩 상태 해제
+                loginBtn.disabled = false;
+                loginBtn.innerHTML = originalText;
+            }
         }
         
         // 데모 계정 이름 가져오기
@@ -436,11 +445,30 @@
             alertDiv.className = `alert alert-${type}`;
             alertDiv.style.display = 'block';
             
-            // 3초 후 자동 숨김
-            setTimeout(() => {
-                alertDiv.style.display = 'none';
-            }, 3000);
+            // 3초 후 자동 숨김 (성공 메시지는 제외)
+            if (type !== 'success') {
+                setTimeout(() => {
+                    alertDiv.style.display = 'none';
+                }, 3000);
+            }
         }
+        
+        // 🧪 API 연결 테스트 (개발용)
+        async function testApiConnection() {
+            try {
+                const response = await fetch(`${API_BASE}/health`);
+                if (response.ok) {
+                    console.log('✅ API 서버 연결 정상');
+                } else {
+                    console.warn('⚠️ API 서버 응답 이상:', response.status);
+                }
+            } catch (error) {
+                console.error('❌ API 서버 연결 실패:', error);
+            }
+        }
+        
+        // 페이지 로드 시 API 연결 상태 확인
+        testApiConnection();
     </script>
 </body>
 </html>

@@ -350,7 +350,10 @@
             }
             const doctorId = doctorIdInput.value.trim();
             const password = passwordInput.value;
-
+            if (!doctorId || !password) {
+                alert('ID와 비밀번호를 모두 입력해주세요.');
+                return;
+            }
             try {
                 const res = await fetch(`${API_BASE}/auth/login`, {
                     method: 'POST',
@@ -360,10 +363,10 @@
                 const data = await res.json();
                 if (res.ok && data.access_token) {
                     localStorage.setItem('token', data.access_token);
-                    localStorage.setItem('doctor_id', doctorId); // 입력값 사용
-                    window.location.href = '/frontend/patient.html'; // 예시: 환자 페이지로 이동
+                    localStorage.setItem('doctor_id', doctorId);
+                    window.location.href = '/frontend/patient.html'; // 로그인 성공 시에만 이동
                 } else if (data.detail) {
-                    alert(data.detail);
+                    alert(data.detail); // 서버 에러 메시지
                 } else {
                     alert('로그인 실패: 알 수 없는 오류');
                 }

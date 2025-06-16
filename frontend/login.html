@@ -291,7 +291,9 @@
     </div>
 
     <script>
-        const API_BASE = 'https://sct-backend-7epf.onrender.com';  // 👈 이미 수정했음
+        // === API 서버 주소를 여기에 설정하세요 ===
+        const API_BASE = "https://sct-backend-7epf.onrender.com";
+        // ======================================
         
         // 👇 바로 여기에 함수 추가!
         async function safeApiCall(url, options = {}) {
@@ -350,7 +352,7 @@
             const password = passwordInput.value;
 
             try {
-                const res = await fetch('/auth/login', {
+                const res = await fetch(`${API_BASE}/auth/login`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ doctor_id: doctorId, password })

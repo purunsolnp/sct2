@@ -416,6 +416,9 @@
             <div class="modal-header">
                 <h2>SCT 해석 결과</h2>
                 <div class="modal-actions">
+                    <button onclick="printInterpretation()" class="action-button">
+                        <span class="icon">🖨️</span> PDF로 저장/인쇄
+                    </button>
                     <button onclick="regenerateInterpretation()" class="action-button">
                         <span class="icon">🔄</span> 재생성
                     </button>
@@ -1147,6 +1150,45 @@
             if (modalId === 'responses-modal') {
                 document.getElementById('interpretation-modal').style.display = 'block';
             }
+        }
+
+        function printInterpretation() {
+            window.print();
+        }
+
+        function showLoading(message = '처리 중입니다...') {
+            if (document.getElementById('global-loading')) return;
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = 'global-loading';
+            loadingDiv.style.position = 'fixed';
+            loadingDiv.style.top = '0';
+            loadingDiv.style.left = '0';
+            loadingDiv.style.width = '100vw';
+            loadingDiv.style.height = '100vh';
+            loadingDiv.style.background = 'rgba(0,0,0,0.25)';
+            loadingDiv.style.zIndex = '9999';
+            loadingDiv.style.display = 'flex';
+            loadingDiv.style.flexDirection = 'column';
+            loadingDiv.style.justifyContent = 'center';
+            loadingDiv.style.alignItems = 'center';
+            loadingDiv.innerHTML = `
+                <div style="background:white;padding:30px 40px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12);font-size:1.2em;display:flex;flex-direction:column;align-items:center;">
+                    <div class="spinner" style="margin-bottom:18px;">
+                        <svg width="40" height="40" viewBox="0 0 40 40">
+                            <circle cx="20" cy="20" r="16" stroke="#4299e1" stroke-width="4" fill="none" stroke-dasharray="80" stroke-dashoffset="60">
+                                <animateTransform attributeName="transform" type="rotate" from="0 20 20" to="360 20 20" dur="1s" repeatCount="indefinite"/>
+                            </circle>
+                        </svg>
+                    </div>
+                    <div>${message}</div>
+                </div>
+            `;
+            document.body.appendChild(loadingDiv);
+        }
+
+        function hideLoading() {
+            const loadingDiv = document.getElementById('global-loading');
+            if (loadingDiv) loadingDiv.remove();
         }
     </script>
 </body>

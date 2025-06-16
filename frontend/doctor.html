@@ -1418,6 +1418,9 @@
                 const patientName = session ? (session.patient_name || session.patientName || 'Unknown') : 'Unknown';
                 const today = new Date().toLocaleDateString('ko-KR');
                 
+                // 보고서 내용 포맷팅
+                const formattedContent = formatReportContent(currentInterpretation);
+                
                 // PDF 생성을 위한 HTML 준비
                 const printContent = `
                     <div class="report-title-print">문장완성검사 보고서</div>
@@ -1426,7 +1429,7 @@
                         <p><strong>검사일:</strong> ${today}</p>
                         <p><strong>담당의:</strong> ${doctorName}</p>
                     </div>
-                    ${currentInterpretation}
+                    ${formattedContent}
                 `;
                 
                 // 숨겨진 인쇄 영역에 내용 설정
@@ -1515,6 +1518,9 @@
             const patientName = session ? (session.patient_name || session.patientName || 'Unknown') : 'Unknown';
             const today = new Date().toLocaleDateString('ko-KR');
             
+            // 보고서 내용 포맷팅
+            const formattedContent = formatReportContent(content);
+            
             const title = `
                 <div class="report-title-print">문장완성검사 보고서</div>
                 <div style="margin-bottom: 30px; text-align: center; color: #666; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px;">
@@ -1524,7 +1530,30 @@
                 </div>
             `;
             
-            document.getElementById('interpretation-content').innerHTML = title + content;
+            document.getElementById('interpretation-content').innerHTML = title + formattedContent;
+        }
+
+        // 보고서 내용 포맷팅 함수
+        function formatReportContent(content) {
+            if (!content) return '';
+            
+            // ** 문자열 제거
+            let formattedContent = content.replace(/\*\*/g, '');
+            
+            // 번호가 있는 섹션을 찾아서 줄바꿈과 굵은 글씨 적용
+            // 패턴: 숫자.공백텍스트 형태를 찾아서 처리
+            formattedContent = formattedContent.replace(/(\d+\.\s*[^\n]+)/g, function(match) {
+                // 앞에 줄바꿈을 추가하고 굵은 글씨로 만들기
+                return '<br><br><strong>' + match.trim() + '</strong>';
+            });
+            
+            // 첫 번째 항목 앞의 불필요한 <br> 제거
+            formattedContent = formattedContent.replace(/^<br><br>/, '');
+            
+            // 일반 줄바꿈 처리
+            formattedContent = formattedContent.replace(/\n/g, '<br>');
+            
+            return formattedContent;
         }
     </script>
 </body>

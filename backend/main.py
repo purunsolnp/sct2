@@ -911,6 +911,7 @@ async def toggle_user_status(
 @app.get("/admin/usage-stats")
 async def get_usage_statistics(
     months: int = 12,
+    doctor_id: str = None,  # 추가된 파라미터
     db = Depends(get_db),
     current_user: str = Depends(verify_token)
 ):
@@ -931,31 +932,36 @@ async def get_usage_statistics(
             else:
                 next_month_start = target_date.replace(month=target_date.month + 1, day=1, hour=0, minute=0, second=0, microsecond=0)
             
+            # 기본 필터 조건
+            base_filter = [
+                SCTSession.created_at >= month_start.replace(tzinfo=None),
+                SCTSession.created_at < next_month_start.replace(tzinfo=None)
+            ]
+            
+            # doctor_id가 있으면 해당 의사만 필터링
+            if doctor_id:
+                base_filter.append(SCTSession.doctor_id == doctor_id)
+            
             # 해당 월의 통계
             month_sessions = db.query(SCTSession).filter(
-                and_(
-                    SCTSession.created_at >= month_start.replace(tzinfo=None),
-                    SCTSession.created_at < next_month_start.replace(tzinfo=None)
-                )
+                and_(*base_filter)
             ).count()
             
+            # 완료된 세션 수
+            completed_filter = base_filter + [SCTSession.status == 'complete']
             month_completed = db.query(SCTSession).filter(
-                and_(
-                    SCTSession.status == 'complete',
-                    SCTSession.submitted_at >= month_start.replace(tzinfo=None),
-                    SCTSession.submitted_at < next_month_start.replace(tzinfo=None)
-                )
+                and_(*completed_filter)
             ).count()
             
-            # 해당 월에 활동한 사용자 수
-            active_users = db.query(User.doctor_id).join(
-                SCTSession, User.doctor_id == SCTSession.doctor_id
-            ).filter(
-                and_(
-                    SCTSession.created_at >= month_start.replace(tzinfo=None),
-                    SCTSession.created_at < next_month_start.replace(tzinfo=None)
-                )
-            ).distinct().count()
+            # 해당 월에 활동한 사용자 수 (doctor_id가 있을 때는 1)
+            if doctor_id:
+                active_users = 1 if month_sessions > 0 else 0
+            else:
+                active_users = db.query(User.doctor_id).join(
+                    SCTSession, User.doctor_id == SCTSession.doctor_id
+                ).filter(
+                    and_(*base_filter)
+                ).distinct().count()
             
             stats.append({
                 "year": target_date.year,
@@ -972,7 +978,8 @@ async def get_usage_statistics(
         
         return {
             "monthly_stats": stats,
-            "period": f"{months}개월"
+            "period": f"{months}개월",
+            "doctor_id": doctor_id  # 응답에 doctor_id 포함
         }
         
     except HTTPException:

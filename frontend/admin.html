@@ -72,7 +72,138 @@
         let totalLogsPages = 1;
         let monthlyChart = null;
         let usageChart = null;
+                // 🆕 관리자용 변수 추가 (이 부분을 usageChart = null; 바로 아래에 추가)
+        let currentAdminSessionLink = '';
         
+        // 🆕 의사 목록 로딩 함수 (이 전체 함수를 추가)
+        async function loadDoctorsList() {
+            try {
+                console.log('의사 목록 로딩 시작');
+                
+                const response = await fetch(`${API_BASE}/admin/users?limit=100`, {
+                    headers: getApiHeaders()
+                });
+                
+                if (!response.ok) {
+                    throw new Error('의사 목록 로드 실패');
+                }
+                
+                const data = await response.json();
+                console.log('의사 목록 로드 성공:', data);
+                
+                const doctorSelect = document.getElementById('admin-doctor-select');
+                if (!doctorSelect) {
+                    console.error('admin-doctor-select 요소를 찾을 수 없음');
+                    return;
+                }
+                
+                doctorSelect.innerHTML = '<option value="">담당 의사를 선택하세요</option>';
+                
+                // 인증된 의사들만 필터링
+                const verifiedDoctors = data.users.filter(user => user.is_verified);
+                
+                verifiedDoctors.forEach(doctor => {
+                    const option = document.createElement('option');
+                    option.value = doctor.doctor_id;
+                    option.textContent = `${doctor.name} (${doctor.doctor_id}) - ${doctor.specialty}`;
+                    doctorSelect.appendChild(option);
+                });
+                
+                console.log(`✅ ${verifiedDoctors.length}명의 인증된 의사 로드 완료`);
+                
+            } catch (error) {
+                console.error('의사 목록 로드 오류:', error);
+                alert('의사 목록을 불러오는데 실패했습니다. 페이지를 새로고침해주세요.');
+            }
+        }
+        
+        // 🆕 관리자용 세션 생성 함수 (이 전체 함수를 추가)
+        async function handleAdminSessionCreate(event) {
+            event.preventDefault();
+            
+            const patientName = document.getElementById('admin-patient-name').value.trim();
+            const selectedDoctorId = document.getElementById('admin-doctor-select').value;
+            
+            console.log('관리자 세션 생성 시도:', { patientName, selectedDoctorId });
+            
+            if (!patientName) {
+                alert('환자 이름을 입력해주세요.');
+                return;
+            }
+            
+            if (!selectedDoctorId) {
+                alert('담당 의사를 선택해주세요.');
+                return;
+            }
+            
+            try {
+                const requestBody = {
+                    patient_name: patientName,
+                    assigned_by: selectedDoctorId
+                };
+                
+                console.log('전송할 데이터:', requestBody);
+                
+                const response = await fetch(`${API_BASE}/sct/sessions`, {
+                    method: 'POST',
+                    headers: getApiHeaders(),
+                    body: JSON.stringify(requestBody)
+                });
+                
+                console.log('세션 생성 응답 상태:', response.status);
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
+                        localStorage.removeItem('access_token');
+                        localStorage.removeItem('currentUser');
+                        window.location.href = 'login.html';
+                        return;
+                    }
+                    const errorData = await response.json();
+                    console.error('세션 생성 오류:', errorData);
+                    throw new Error(errorData.detail || '세션 생성에 실패했습니다.');
+                }
+                
+                const sessionData = await response.json();
+                console.log('생성된 세션:', sessionData);
+                
+                // 성공 메시지 및 링크 표시
+                const patientLink = `${window.location.origin}/patient.html?session=${sessionData.session_id}`;
+                currentAdminSessionLink = patientLink;
+                
+                document.getElementById('admin-patient-link').textContent = patientLink;
+                document.getElementById('admin-session-alert').style.display = 'block';
+                
+                // 폼 초기화
+                document.getElementById('admin-patient-name').value = '';
+                document.getElementById('admin-doctor-select').value = '';
+                
+                // 대시보드 통계 새로고침
+                loadDashboardStats();
+                
+                console.log('✅ 관리자 세션 생성 완료');
+                
+            } catch (error) {
+                console.error('관리자 세션 생성 오류:', error);
+                alert('세션 생성 중 오류가 발생했습니다: ' + error.message);
+            }
+        }
+        
+        // 🆕 관리자용 링크 복사 함수 (이 전체 함수를 추가)
+        function copyAdminLink() {
+            if (!currentAdminSessionLink) {
+                alert('복사할 링크가 없습니다.');
+                return;
+            }
+            
+            navigator.clipboard.writeText(currentAdminSessionLink).then(() => {
+                alert('검사 링크가 클립보드에 복사되었습니다!');
+            }).catch(err => {
+                console.error('링크 복사 실패:', err);
+                alert('링크 복사에 실패했습니다. 링크를 직접 복사해주세요.');
+            });
+        }
         // API 헤더
         function getApiHeaders() {
             const token = localStorage.getItem('access_token');
@@ -109,7 +240,17 @@
             // 초기 데이터 로드
             loadDashboardStats();
             loadMonthlyChart();
+             // 🆕 이 두 줄을 추가하세요!
+            loadDoctorsList();
             
+            // 🆕 관리자 세션 생성 폼 이벤트 연결
+            const adminForm = document.getElementById('admin-create-session-form');
+            if (adminForm) {
+                adminForm.addEventListener('submit', handleAdminSessionCreate);
+                console.log('✅ 관리자 세션 생성 폼 이벤트 연결됨');
+            } else {
+                console.error('❌ admin-create-session-form 요소를 찾을 수 없음');
+            }
             // 검색 이벤트 설정
             document.getElementById('user-search').addEventListener('input', debounce(searchUsers, 500));
             document.getElementById('log-level-filter').addEventListener('change', refreshLogs);
@@ -1141,6 +1282,24 @@
             .users-table {
                 font-size: 0.9em;
             }
+        }
+            .alert {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 15px 0;
+            border: 1px solid;
+        }
+        
+        .alert-success {
+            background-color: #c6f6d5;
+            color: #22543d;
+            border-color: #9ae6b4;
+        }
+        
+        .alert-error {
+            background-color: #fed7d7;
+            color: #c53030;
+            border-color: #feb2b2;
         }
     </style>
 </head>

@@ -243,7 +243,7 @@ def verify_password(password: str, hashed_password: str) -> bool:
 
 def create_access_token(data: dict):
     to_encode = data.copy()
-    expire = get_kst_now() + timedelta(hours=24)
+    expire = datetime.utcnow() + timedelta(hours=24)
     to_encode.update({"exp": expire.timestamp()})
     return jwt.encode(to_encode, SECRET_KEY, algorithm="HS256")
 

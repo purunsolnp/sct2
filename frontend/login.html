@@ -362,13 +362,16 @@
                         name: getDemoAccountName(doctorId),
                         loginTime: new Date().toISOString()
                     };
-                    
+
                     localStorage.setItem('currentUser', JSON.stringify(userData));
-                    
-                    showAlert('로그인 성공! 대시보드로 이동합니다...', 'success');
-                    
+
                     setTimeout(() => {
-                        window.location.href = 'doctor.html';
+                        // 관리자는 admin.html로, 일반 의사는 doctor.html로
+                        if (['admin', 'doctor1'].includes(doctorId)) {
+                            window.location.href = 'admin.html';
+                        } else {
+                            window.location.href = 'doctor.html';
+                        }
                     }, 1500);
                     
                     return;

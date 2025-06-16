@@ -1182,6 +1182,32 @@
                 <div class="stat-change" id="expired-sessions-info">만료: 0건</div>
             </div>
         </div>
+        <!-- 👇 바로 여기에 새 검사 생성 카드 추가! -->
+        <div class="card" style="margin-bottom: 25px;">
+            <h2>🆕 새 SCT 검사 생성</h2>
+            <form id="admin-create-session-form" style="display: flex; gap: 15px; align-items: end;">
+                <div style="flex: 1;">
+                    <label for="admin-patient-name" style="display: block; margin-bottom: 8px; font-weight: 600; color: #4a5568;">환자 이름</label>
+                    <input type="text" id="admin-patient-name" placeholder="환자 이름을 입력하세요" required style="width: 100%; padding: 12px 15px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1em;">
+                </div>
+                <div style="flex: 1;">
+                    <label for="admin-doctor-select" style="display: block; margin-bottom: 8px; font-weight: 600; color: #4a5568;">담당 의사</label>
+                    <select id="admin-doctor-select" required style="width: 100%; padding: 12px 15px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1em;">
+                        <option value="">담당 의사를 선택하세요</option>
+                    </select>
+                </div>
+                <button type="submit" class="button" style="height: 48px; white-space: nowrap;">검사 생성</button>
+            </form>
+            
+            <div id="admin-session-alert" class="alert alert-success" style="display: none; margin-top: 15px;">
+                <strong>✅ 새 검사가 생성되었습니다!</strong>
+                <div id="admin-link-display" style="margin-top: 10px;">
+                    <p><strong>환자에게 전달할 검사 링크:</strong></p>
+                    <div id="admin-patient-link" style="background: #f7fafc; padding: 10px; border-radius: 4px; word-break: break-all; margin: 10px 0;"></div>
+                    <button onclick="copyAdminLink()" class="button button-secondary">📋 링크 복사</button>
+                </div>
+            </div>
+        </div>
         
         <!-- 탭 메뉴 -->
         <div class="card">

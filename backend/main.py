@@ -2219,6 +2219,158 @@ async def get_session_responses(session_id: str, db = Depends(get_db)):
         logger.error(f"❌ 응답 조회 실패: {e}")
         raise HTTPException(status_code=500, detail=f"응답 조회 중 오류: {str(e)}")
 
+# 환자용 세션 조회 (인증 불필요)
+@app.get("/sct/sessions/{session_id}/patient")
+async def get_session_for_patient(session_id: str, db = Depends(get_db)):
+    """환자용 세션 정보 조회 (인증 불필요)"""
+    try:
+        logger.info(f"👤 환자용 세션 조회: {session_id}")
+        
+        session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 만료 확인
+        current_time = get_kst_now().replace(tzinfo=None)
+        if session.expires_at and session.expires_at < current_time:
+            session.status = "expired"
+            db.commit()
+            raise HTTPException(status_code=410, detail="만료된 세션입니다")
+        
+        # 기존 응답 조회
+        responses = db.query(SCTResponse).filter(
+            SCTResponse.session_id == session_id
+        ).order_by(SCTResponse.item_no).all()
+        
+        # 문항 목록 생성 (기존 응답 포함)
+        items = []
+        existing_answers = {resp.item_no: resp.answer for resp in responses}
+        
+        for i, stem in enumerate(SCT_ITEMS, 1):
+            items.append({
+                "item_no": i,
+                "stem": stem,
+                "answer": existing_answers.get(i, "")
+            })
+        
+        return {
+            "session_id": session.session_id,
+            "patient_name": session.patient_name,
+            "status": session.status,
+            "items": items,
+            "created_at": session.created_at.isoformat() if session.created_at else None,
+            "expires_at": session.expires_at.isoformat() if session.expires_at else None
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 환자용 세션 조회 오류: {e}")
+        raise HTTPException(status_code=500, detail="세션 조회 중 오류가 발생했습니다")
+
+# 환자용 응답 저장 (인증 불필요)
+@app.post("/sct/sessions/{session_id}/responses")
+async def save_patient_responses(
+    session_id: str, 
+    request_data: dict,
+    db = Depends(get_db)
+):
+    """환자용 응답 저장 (인증 불필요)"""
+    try:
+        logger.info(f"💾 환자 응답 저장: {session_id}")
+        
+        session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        if session.status == "expired":
+            raise HTTPException(status_code=410, detail="만료된 세션입니다")
+        
+        responses = request_data.get("responses", [])
+        
+        # 기존 응답 삭제
+        db.query(SCTResponse).filter(SCTResponse.session_id == session_id).delete()
+        
+        # 새 응답 저장
+        saved_count = 0
+        for response in responses:
+            if response.get("answer") and response.get("answer").strip():
+                db_response = SCTResponse(
+                    session_id=session_id,
+                    item_no=response.get("item_no"),
+                    stem=response.get("stem", ""),
+                    answer=response.get("answer").strip(),
+                    created_at=get_kst_now().replace(tzinfo=None)
+                )
+                db.add(db_response)
+                saved_count += 1
+        
+        db.commit()
+        
+        return {"message": "응답이 저장되었습니다", "saved_count": saved_count}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 환자 응답 저장 오류: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="응답 저장 중 오류가 발생했습니다")
+
+# 환자용 검사 완료 (인증 불필요)
+@app.post("/sct/sessions/{session_id}/complete")
+async def complete_patient_session(
+    session_id: str,
+    request_data: dict,
+    db = Depends(get_db)
+):
+    """환자용 검사 완료 (인증 불필요)"""
+    try:
+        logger.info(f"✅ 환자 검사 완료: {session_id}")
+        
+        session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        responses = request_data.get("responses", [])
+        
+        # 기존 응답 삭제 및 새로 저장
+        db.query(SCTResponse).filter(SCTResponse.session_id == session_id).delete()
+        
+        saved_count = 0
+        for response in responses:
+            if response.get("answer") and response.get("answer").strip():
+                db_response = SCTResponse(
+                    session_id=session_id,
+                    item_no=response.get("item_no"),
+                    stem=response.get("stem", ""),
+                    answer=response.get("answer").strip(),
+                    created_at=get_kst_now().replace(tzinfo=None)
+                )
+                db.add(db_response)
+                saved_count += 1
+        
+        # 세션 완료 처리
+        session.status = "complete"
+        session.submitted_at = get_kst_now().replace(tzinfo=None)
+        
+        db.commit()
+        
+        logger.info(f"✅ 검사 완료: {saved_count}개 응답 저장")
+        
+        return {
+            "message": "검사가 완료되었습니다",
+            "session_id": session_id,
+            "saved_count": saved_count,
+            "completed_at": session.submitted_at.isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"❌ 검사 완료 오류: {e}")
+        db.rollback()
+        raise HTTPException(status_code=500, detail="검사 완료 중 오류가 발생했습니다")
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

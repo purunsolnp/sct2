@@ -295,6 +295,15 @@
             border-radius: 6px;
             border: 1px solid #e2e8f0;
         }
+        .report-title-print {
+            font-size: 2.2em;
+            font-weight: bold;
+            color: #2b6cb0;
+            text-align: center;
+            margin-bottom: 32px;
+            margin-top: 0;
+            letter-spacing: 1px;
+        }
         @media print {
             body, html {
                 background: white !important;
@@ -1090,8 +1099,7 @@
                 }
                 const data = await interpretationResponse.json();
                 currentInterpretation = data.interpretation;
-                document.getElementById('interpretation-content').innerHTML = 
-                    marked.parse(data.interpretation);
+                renderInterpretationWithTitle(data.interpretation);
             } catch (error) {
                 document.getElementById('interpretation-content').innerHTML = `<div style="color:red;">❌ 오류: ${error.message}</div>`;
             }
@@ -1119,8 +1127,7 @@
                 const data = await response.json();
                 
                 // 해석 내용 업데이트
-                document.getElementById('interpretation-content').innerHTML = 
-                    marked.parse(data.interpretation);
+                renderInterpretationWithTitle(data.interpretation);
                 
                 showSuccess('해석이 재생성되었습니다.');
                 
@@ -1220,6 +1227,12 @@
         function hideLoading() {
             const loadingDiv = document.getElementById('global-loading');
             if (loadingDiv) loadingDiv.remove();
+        }
+
+        // 해석 결과를 표시할 때 맨 위에 제목을 추가
+        function renderInterpretationWithTitle(content) {
+            const title = '<div class="report-title-print">문장완성검사 보고서</div>';
+            document.getElementById('interpretation-content').innerHTML = title + content;
         }
     </script>
 </body>

@@ -743,19 +743,11 @@
         
         // 안전한 날짜 포맷팅 함수 (KST 기준)
         function formatDate(dateString) {
-            if (!dateString) {
-                return '-';
-            }
-            
+            if (!dateString) return '-';
             try {
                 const date = new Date(dateString);
-                
-                if (isNaN(date.getTime())) {
-                    debugLog('잘못된 날짜 형식', dateString);
-                    return 'Invalid Date';
-                }
-                
-                return date.toLocaleDateString('ko-KR', {
+                if (isNaN(date.getTime())) return 'Invalid Date';
+                return date.toLocaleString('ko-KR', {
                     year: 'numeric',
                     month: '2-digit',
                     day: '2-digit',
@@ -763,9 +755,7 @@
                     minute: '2-digit',
                     timeZone: 'Asia/Seoul'
                 });
-                
-            } catch (error) {
-                debugLog('날짜 포맷팅 오류', { error: error.message, original: dateString });
+            } catch {
                 return 'Format Error';
             }
         }
@@ -887,16 +877,52 @@
         
         // 분석 모달 열기
         async function openAnalysisModal(sessionId) {
-            debugLog('분석 모달 열기', sessionId);
+            debugLog('분석 팝업 열기', sessionId);
             currentSessionId = sessionId;
-            const modal = document.getElementById('interpretation-modal');
-            modal.style.display = 'block';
-            
-            // 첫 번째 탭 활성화
-            switchTab('interpretation');
-            
-            // 해석 자동 생성
-            await generateInterpretation(sessionId);
+            // 팝업창 열기
+            const popup = window.open('', '_blank', 'width=900,height=900,scrollbars=yes');
+            popup.document.write('<html><head><title>전문 해석 로딩중...</title></head><body><div id="interpretation-content">로딩중...</div></body></html>');
+            // 해석 데이터 불러오기
+            try {
+                let interpretationResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpretation`, {
+                    headers: getApiHeaders()
+                });
+                if (interpretationResponse.status === 404) {
+                    // 해석이 없으면 새로 생성
+                    await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpret`, {
+                        method: 'POST',
+                        headers: getApiHeaders()
+                    });
+                    interpretationResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpretation`, {
+                        headers: getApiHeaders()
+                    });
+                }
+                if (!interpretationResponse.ok) {
+                    throw new Error('해석 결과를 불러올 수 없습니다.');
+                }
+                const data = await interpretationResponse.json();
+                currentInterpretation = data.interpretation;
+                // 해석 생성일 표시 (KST)
+                const createdAt = data.created_at ? formatDate(data.created_at) : formatDate(new Date());
+                // 해석 내용 렌더링
+                popup.document.title = 'SCT 전문 해석';
+                popup.document.body.innerHTML = `
+                    <div style="text-align:right; margin-bottom:20px;">
+                        <button onclick="window.print()" style="padding:8px 18px; border-radius:6px; background:#4299e1; color:white; border:none; font-weight:600; margin-right:8px;">PDF로 저장/인쇄</button>
+                        <button onclick="window.close()" style="padding:8px 18px; border-radius:6px; background:#e53e3e; color:white; border:none; font-weight:600;">닫기</button>
+                    </div>
+                    <div style="padding: 30px; font-family: 'Malgun Gothic', 'Noto Sans KR', 'Segoe UI', sans-serif;">
+                        <h2 style="color:#2b6cb0;">📊 SCT 검사 결과 분석</h2>
+                        <div style="margin-bottom: 20px; padding: 15px; background: #ebf8ff; border-radius: 8px; border-left: 4px solid #4299e1;">
+                            <h3 style="margin: 0; color: #2b6cb0;">환자: ${data.patient_name}</h3>
+                            <p style="margin: 5px 0 0 0; color: #2c5282;">해석 생성일: ${createdAt}</p>
+                        </div>
+                        <div style="white-space: pre-wrap; line-height: 1.8; font-size: 1em;">${data.interpretation.replace(/\n/g, '<br>')}</div>
+                    </div>
+                `;
+            } catch (error) {
+                popup.document.body.innerHTML = `<div style="color:red;">❌ 오류: ${error.message}</div>`;
+            }
         }
         
         // 탭 전환
@@ -921,101 +947,6 @@
             } else if (tabName === 'responses' && currentSessionId) {
                 loadAllResponses(currentSessionId);
             }
-        }
-        
-        // 전문 해석 생성
-        async function generateInterpretation(sessionId) {
-            debugLog('전문 해석 생성 시작', sessionId);
-            
-            const loading = document.getElementById('interpretation-loading');
-            const content = document.getElementById('interpretation-content');
-            const actions = document.getElementById('interpretation-actions');
-            
-            loading.style.display = 'block';
-            content.innerHTML = '';
-            actions.style.display = 'none';
-            
-            try {
-                // 먼저 기존 해석이 있는지 확인
-                let interpretationResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpretation`, {
-                    headers: getApiHeaders()
-                });
-                
-                debugLog('해석 조회 응답', interpretationResponse.status);
-                
-                if (interpretationResponse.status === 404) {
-                    debugLog('해석이 없음, 새로 생성');
-                    // 해석이 없으면 새로 생성
-                    const generateResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpret`, {
-                        method: 'POST',
-                        headers: getApiHeaders()
-                    });
-                    
-                    debugLog('해석 생성 응답', generateResponse.status);
-                    
-                    if (!generateResponse.ok) {
-                        const errorData = await generateResponse.json();
-                        throw new Error(errorData.detail || '해석 생성에 실패했습니다.');
-                    }
-                    
-                    // 생성된 해석 가져오기
-                    interpretationResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpretation`, {
-                        headers: getApiHeaders()
-                    });
-                }
-                
-                if (!interpretationResponse.ok) {
-                    if (interpretationResponse.status === 401) {
-                        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
-                        localStorage.removeItem('access_token');
-                        localStorage.removeItem('currentUser');
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    throw new Error('해석 결과를 불러올 수 없습니다.');
-                }
-                
-                const data = await interpretationResponse.json();
-                debugLog('해석 데이터 수신', data);
-                
-                currentInterpretation = data.interpretation;
-                
-                loading.style.display = 'none';
-                
-                // 마크다운 스타일 해석 결과 표시
-                content.innerHTML = formatInterpretation(data.interpretation, data.patient_name);
-                actions.style.display = 'block';
-                
-            } catch (error) {
-                debugLog('해석 생성 오류', error.message);
-                loading.style.display = 'none';
-                content.innerHTML = `
-                    <div class="alert alert-error">
-                        <strong>❌ 오류가 발생했습니다</strong><br>
-                        ${error.message}
-                    </div>
-                `;
-            }
-        }
-        
-        // 해석 결과 포맷팅
-        function formatInterpretation(interpretation, patientName) {
-            let formatted = interpretation
-                .replace(/^# /gm, '<h1>')
-                .replace(/^## /gm, '<h2>')
-                .replace(/^### /gm, '<h3>')
-                .replace(/\n/g, '<br>')
-                .replace(/<h([123])>([^<]*)<br>/g, '<h$1>$2</h$1>')
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>');
-            
-            return `
-                <div style="margin-bottom: 20px; padding: 15px; background: #ebf8ff; border-radius: 8px; border-left: 4px solid #4299e1;">
-                    <h3 style="margin: 0; color: #2b6cb0;">환자: ${patientName}</h3>
-                    <p style="margin: 5px 0 0 0; color: #2c5282;">해석 생성일: ${new Date().toLocaleString('ko-KR', {timeZone: 'Asia/Seoul'})}</p>
-                </div>
-                ${formatted}
-            `;
         }
         
         // 카테고리별 분석 로드

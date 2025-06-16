@@ -541,6 +541,21 @@ async def check_doctor_id(doctor_id: str, db = Depends(get_db)):
         logger.error(f"❌ ID 확인 오류: {e}")
         raise HTTPException(status_code=500, detail="ID 확인 중 오류가 발생했습니다")
 
+def check_user_permission(current_user: str, db: Session, action: str = "access"):
+    """사용자 권한을 확인하는 통합 함수"""
+    user = db.query(User).filter(User.doctor_id == current_user).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+    
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="비활성화된 계정입니다. 관리자에게 문의하세요.")
+    
+    if not user.is_verified:
+        raise HTTPException(status_code=403, detail="승인되지 않은 계정입니다. 관리자의 승인을 기다려주세요.")
+    
+    return user
+
 @app.post("/sct/sessions")
 async def create_session(
     session_data: SessionCreate, 
@@ -550,10 +565,8 @@ async def create_session(
     try:
         logger.info(f"🏗️ 새 세션 생성 요청: patient={session_data.patient_name}, doctor={current_user}")
         
-        # 사용자 활성화 상태 확인
-        user = db.query(User).filter(User.doctor_id == current_user).first()
-        if not user or not user.is_active:
-            raise HTTPException(status_code=403, detail="비활성화된 계정입니다. 관리자에게 문의하세요.")
+        # 통합된 권한 확인
+        check_user_permission(current_user, db)
         
         session_id = str(uuid.uuid4())
         expires_at = get_kst_now() + timedelta(days=7)
@@ -1449,14 +1462,21 @@ async def get_categorical_analysis(session_id: str, db = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"분석 중 오류: {str(e)}")
 
 @app.post("/sct/sessions/{session_id}/interpret")
-async def generate_interpretation_endpoint(session_id: str, db = Depends(get_db)):
+async def generate_interpretation_endpoint(session_id: str, db = Depends(get_db), current_user: str = Depends(get_current_user)):
     """SCT 해석을 생성합니다."""
     try:
         logger.info(f"🧠 해석 생성 요청: {session_id}")
         
+        # 통합된 권한 확인
+        check_user_permission(current_user, db)
+        
         session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
         if not session:
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 세션 소유권 확인
+        if session.doctor_id != current_user:
+            raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다")
         
         if session.status != "complete":
             raise HTTPException(status_code=400, detail="완료된 검사만 해석 가능합니다")
@@ -2169,20 +2189,27 @@ async def change_password(
     return {"message": "비밀번호가 성공적으로 변경되었습니다."}
 
 @app.post("/sct/sessions/{session_id}/regenerate")
-async def regenerate_interpretation(session_id: str, db = Depends(get_db)):
+async def regenerate_interpretation(session_id: str, db = Depends(get_db), current_user: str = Depends(get_current_user)):
     """해석을 재생성합니다."""
     try:
         logger.info(f"🔄 해석 재생성 요청: {session_id}")
         
-        # 기존 해석 삭제
-        db.query(SCTInterpretation).filter(
-            SCTInterpretation.session_id == session_id
-        ).delete()
+        # 통합된 권한 확인
+        check_user_permission(current_user, db)
         
         # 세션 정보 가져오기
         session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
         if not session:
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 세션 소유권 확인
+        if session.doctor_id != current_user:
+            raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다")
+        
+        # 기존 해석 삭제
+        db.query(SCTInterpretation).filter(
+            SCTInterpretation.session_id == session_id
+        ).delete()
         
         # 응답 목록 조회
         responses = db.query(SCTResponse).filter(

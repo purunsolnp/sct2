@@ -557,6 +557,190 @@
                 opacity: 1;
             }
         }
+
+        /* 모달 스타일 */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+
+        .modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            padding: 20px;
+            border: 1px solid #888;
+            width: 80%;
+            max-width: 800px;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .modal-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .action-button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: background-color 0.3s;
+        }
+
+        .action-button:hover {
+            background-color: #45a049;
+        }
+
+        .close-button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            background-color: #f44336;
+            color: white;
+            cursor: pointer;
+            font-size: 20px;
+            line-height: 1;
+        }
+
+        .close-button:hover {
+            background-color: #da190b;
+        }
+
+        .responses-content {
+            max-height: 70vh;
+            overflow-y: auto;
+            padding: 20px;
+            background-color: #fff;
+            border-radius: 4px;
+        }
+
+        .response-item {
+            margin-bottom: 20px;
+            padding: 15px;
+            border: 1px solid #eee;
+            border-radius: 4px;
+        }
+
+        .response-item h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+
+        .response-item p {
+            margin: 0;
+            color: #666;
+            line-height: 1.5;
+        }
+
+        @media print {
+            .modal-content {
+                margin: 0;
+                padding: 20px;
+                width: 100%;
+                max-width: none;
+                box-shadow: none;
+            }
+
+            .modal-header {
+                display: none;
+            }
+
+            .responses-content {
+                max-height: none;
+                overflow: visible;
+            }
+        }
+
+        /* 비밀번호 변경 모달 스타일 */
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus {
+            border-color: #4CAF50;
+            outline: none;
+            box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+        }
+
+        .form-actions {
+            margin-top: 20px;
+            text-align: right;
+        }
+
+        .primary-button {
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+        }
+
+        .primary-button:hover {
+            background-color: #45a049;
+        }
+
+        .header-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 8px 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 0.3s;
+            margin-left: 10px;
+            text-decoration: none;  /* 링크 스타일 제거 */
+        }
+
+        .header-button:hover {
+            background-color: #45a049;
+        }
+
+        .header-button .icon {
+            font-size: 16px;
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -569,7 +753,12 @@
                     <strong>의사:</strong> <span id="doctor-name">로딩중...</span><br>
                     <small>ID: <span id="doctor-id">로딩중...</span></small>
                 </div>
-                <button onclick="logout()" class="logout-btn">🚪 로그아웃</button>
+                <a href="change_password.html" class="header-button">
+                    <span class="icon">🔑</span> 비밀번호 변경
+                </a>
+                <button onclick="logout()" class="header-button">
+                    <span class="icon">🚪</span> 로그아웃
+                </button>
             </div>
         </div>
     </div>
@@ -704,7 +893,15 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h2>원본 응답</h2>
-                <button onclick="closeModal('responses-modal')" class="close-button">×</button>
+                <div class="modal-actions">
+                    <button onclick="downloadResponsesPDF()" class="action-button">
+                        <span class="icon">📄</span> PDF 다운로드
+                    </button>
+                    <button onclick="printResponses()" class="action-button">
+                        <span class="icon">🖨️</span> 인쇄
+                    </button>
+                    <button onclick="closeModal('responses-modal')" class="close-button">×</button>
+                </div>
             </div>
             <div class="modal-body">
                 <div id="responses-content" class="responses-content"></div>
@@ -1558,6 +1755,92 @@
             formattedContent = formattedContent.replace(/\n/g, '<br>');
             
             return formattedContent;
+        }
+
+        // 원본 응답 모달 관련 함수들
+        function showResponsesModal(sessionId) {
+            const modal = document.getElementById('responses-modal');
+            modal.style.display = 'block';
+            loadResponses(sessionId);
+        }
+
+        async function loadResponses(sessionId) {
+            try {
+                const response = await fetch(`/sct/session/${sessionId}`);
+                const data = await response.json();
+                
+                const responsesContent = document.getElementById('responses-content');
+                responsesContent.innerHTML = `
+                    <h2>${data.patient_name}님의 SCT 응답</h2>
+                    <p>검사일: ${new Date(data.created_at).toLocaleDateString()}</p>
+                    <div class="responses-list">
+                        ${data.responses.map((resp, index) => `
+                            <div class="response-item">
+                                <h3>${index + 1}. ${resp.stem}</h3>
+                                <p>${resp.answer}</p>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            } catch (error) {
+                console.error('응답 로딩 실패:', error);
+                alert('응답을 불러오는데 실패했습니다.');
+            }
+        }
+
+        function downloadResponsesPDF() {
+            const content = document.getElementById('responses-content').innerHTML;
+            const printWindow = window.open('', '_blank');
+            
+            printWindow.document.write(`
+                <html>
+                    <head>
+                        <title>SCT 원본 응답</title>
+                        <style>
+                            body {
+                                font-family: Arial, sans-serif;
+                                line-height: 1.6;
+                                padding: 20px;
+                            }
+                            .response-item {
+                                margin-bottom: 20px;
+                                padding: 15px;
+                                border: 1px solid #eee;
+                                border-radius: 4px;
+                            }
+                            h2 {
+                                color: #333;
+                                margin-bottom: 10px;
+                            }
+                            h3 {
+                                color: #444;
+                                margin: 0 0 10px 0;
+                            }
+                            p {
+                                margin: 0;
+                                color: #666;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        ${content}
+                    </body>
+                </html>
+            `);
+            
+            printWindow.document.close();
+            printWindow.print();
+        }
+
+        function printResponses() {
+            window.print();
+        }
+
+        // 모달 외부 클릭 시 닫기
+        window.onclick = function(event) {
+            if (event.target.className === 'modal') {
+                event.target.style.display = 'none';
+            }
         }
     </script>
 </body>

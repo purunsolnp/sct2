@@ -315,7 +315,12 @@ def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
 
 def verify_password(password: str, hashed_password: str) -> bool:
-    return hash_password(password) == hashed_password
+    # 임시: sha256 해시 또는 평문 모두 허용 (마이그레이션 후 반드시 원복!)
+    if hash_password(password) == hashed_password:
+        return True
+    if password == hashed_password:
+        return True
+    return False
 
 def create_access_token(data: dict):
     to_encode = data.copy()

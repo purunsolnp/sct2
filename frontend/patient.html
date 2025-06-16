@@ -271,7 +271,6 @@
             <div class="patient-info">
                 <h3 style="margin-bottom: 10px; color: #2d3748;">환자 정보</h3>
                 <p><strong>이름:</strong> <span id="patient-name">로딩중...</span></p>
-                
             </div>
             
             <div class="progress-container">
@@ -325,33 +324,8 @@
         const API_BASE = "https://sct-backend-7epf.onrender.com";
         // ======================================
         
-        // 인증(로그인) 체크: 토큰 없으면 로그인 페이지로 이동
-        const token = localStorage.getItem('token');
-        if (!token) {
-            alert('로그인이 필요합니다.');
-            window.location.href = '/frontend/login.html';
-        }
-        
-        // 모든 API 호출에 Authorization 헤더를 반드시 추가!
-        async function safeApiCall(url, options = {}) {
-            options.headers = options.headers || {};
-            options.headers['Authorization'] = 'Bearer ' + token;
-            if (!options.headers['Content-Type']) {
-                options.headers['Content-Type'] = 'application/json';
-            }
-            try {
-                const res = await fetch(url, options);
-                if (res.status === 401) {
-                    alert('세션이 만료되었거나 로그인 정보가 없습니다.');
-                    window.location.href = '/frontend/login.html';
-                    return null;
-                }
-                return await res.json();
-            } catch (err) {
-                alert('서버 연결 오류');
-                return null;
-            }
-        }
+        // 🔥 **중요**: 환자용 페이지는 인증이 필요하지 않습니다!
+        // 세션 ID만으로 접근 가능해야 합니다.
         
         let sessionId = '';
         let patientName = '';
@@ -369,26 +343,73 @@
                 return;
             }
             
+            console.log('세션 ID:', sessionId);
             loadSession();
         });
         
+        // 🚨 수정된 부분: 인증 없는 API 호출
+        async function safeApiCall(url, options = {}) {
+            try {
+                console.log('API 호출:', url);
+                
+                // 환자용 API는 인증 헤더가 필요하지 않습니다
+                const headers = {
+                    'Content-Type': 'application/json',
+                    ...options.headers
+                };
+                
+                const response = await fetch(url, {
+                    ...options,
+                    headers
+                });
+                
+                console.log('응답 상태:', response.status);
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    console.error('API 오류 응답:', errorText);
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                return await response.json();
+            } catch (error) {
+                console.error('API 호출 오류:', error);
+                throw error;
+            }
+        }
+        
         async function loadSession() {
             try {
-                const data = await safeApiCall(`${API_BASE}/sct/session/${sessionId}/items`);
+                console.log('세션 로드 시작:', sessionId);
+                
+                // 🚨 수정된 엔드포인트: 인증 없이 접근 가능한 환자용 API
+                const data = await safeApiCall(`${API_BASE}/sct/sessions/${sessionId}/patient`);
                 
                 if (!data) {
-                    if (data === null) {
-                        throw new Error('존재하지 않는 검사입니다.');
-                    } else if (data === false) {
-                        throw new Error('만료된 검사입니다.');
-                    }
-                    throw new Error('검사를 불러올 수 없습니다.');
+                    throw new Error('세션 데이터를 받을 수 없습니다.');
+                }
+                
+                console.log('받은 세션 데이터:', data);
+                
+                // 세션 상태 확인
+                if (data.status === 'expired') {
+                    throw new Error('만료된 검사입니다.');
+                }
+                
+                if (data.status === 'complete') {
+                    showCompletion();
+                    return;
                 }
                 
                 sessionId = data.session_id;
                 patientName = data.patient_name;
-                questions = data.items;
+                questions = data.items || [];
                 
+                if (questions.length === 0) {
+                    throw new Error('검사 문항을 불러올 수 없습니다.');
+                }
+                
+                // 기존 답변 복원
                 answers = new Array(questions.length);
                 questions.forEach((item, index) => {
                     answers[index] = item.answer || '';
@@ -396,11 +417,7 @@
                 
                 document.getElementById('patient-name').textContent = patientName;
                 
-                if (data.status === 'complete') {
-                    showCompletion();
-                    return;
-                }
-                
+                // 마지막 답변한 문항으로 이동
                 currentQuestion = findLastAnsweredQuestion();
                 
                 showMainScreen();
@@ -408,8 +425,8 @@
                 updateProgress();
                 
             } catch (error) {
-                console.error('Load session error:', error);
-                showError(error.message);
+                console.error('세션 로드 오류:', error);
+                showError(error.message || '검사를 불러올 수 없습니다.');
             }
         }
         
@@ -511,18 +528,23 @@
         
         async function saveToServer() {
             try {
-                const response = await safeApiCall(`${API_BASE}/sct/session/${sessionId}/responses`, {
+                // 🚨 수정된 엔드포인트: 환자용 응답 저장
+                const response = await safeApiCall(`${API_BASE}/sct/sessions/${sessionId}/responses`, {
                     method: 'POST',
-                    body: JSON.stringify(answers)
+                    body: JSON.stringify({
+                        responses: answers.map((answer, index) => ({
+                            item_no: questions[index]?.item_no || index + 1,
+                            stem: questions[index]?.stem || '',
+                            answer: answer || ''
+                        })).filter(item => item.answer.trim())
+                    })
                 });
                 
-                if (!response) {
-                    throw new Error('저장에 실패했습니다.');
-                }
+                console.log('응답 저장 성공:', response);
                 
             } catch (error) {
-                console.error('Auto save error:', error);
-                showError('저장 중 오류가 발생했습니다.');
+                console.error('자동 저장 오류:', error);
+                // 자동 저장 실패는 사용자에게 알리지 않음 (UX 개선)
             }
         }
         
@@ -550,51 +572,49 @@
         
         async function completeTest() {
             try {
-                const response = await safeApiCall(`${API_BASE}/sct/session/${sessionId}/complete`, {
+                saveCurrentAnswer();
+                
+                // 🚨 수정된 엔드포인트: 환자용 검사 완료
+                const response = await safeApiCall(`${API_BASE}/sct/sessions/${sessionId}/complete`, {
                     method: 'POST',
-                    body: JSON.stringify(answers)
+                    body: JSON.stringify({
+                        responses: answers.map((answer, index) => ({
+                            item_no: questions[index]?.item_no || index + 1,
+                            stem: questions[index]?.stem || '',
+                            answer: answer || ''
+                        }))
+                    })
                 });
                 
-                if (!response) {
-                    throw new Error('검사 완료에 실패했습니다.');
-                }
+                console.log('검사 완료 성공:', response);
                 
                 document.getElementById('main-screen').style.display = 'none';
                 showCompletion();
                 
             } catch (error) {
-                console.error('Complete test error:', error);
-                showError('검사 완료 중 오류가 발생했습니다.');
+                console.error('검사 완료 오류:', error);
+                showError('검사 완료 중 오류가 발생했습니다: ' + error.message);
             }
         }
         
+        // 페이지 이탈 시 자동 저장
         window.addEventListener('beforeunload', function() {
             if (answers.some(answer => answer && answer.trim())) {
                 saveCurrentAnswer();
-                navigator.sendBeacon(`${API_BASE}/sct/session/${sessionId}/responses`, 
-                    JSON.stringify(answers.map((answer, index) => ({
-                        item_no: questions[index]?.item_no || index + 1,
-                        stem: questions[index]?.stem || '',
-                        answer: answer || ''
-                    })).filter(item => item.answer.trim()))
+                
+                // 브라우저 Beacon API를 사용한 비동기 저장
+                navigator.sendBeacon(
+                    `${API_BASE}/sct/sessions/${sessionId}/responses`,
+                    JSON.stringify({
+                        responses: answers.map((answer, index) => ({
+                            item_no: questions[index]?.item_no || index + 1,
+                            stem: questions[index]?.stem || '',
+                            answer: answer || ''
+                        })).filter(item => item.answer.trim())
+                    })
                 );
             }
         });
-        
-        // 테스트: JWT 인증이 필요한 API 호출
-        async function testAuthApi() {
-            const token = localStorage.getItem('token');
-            if (!token) {
-                alert('로그인이 필요합니다.');
-                return;
-            }
-            // 예시: 실제로 JWT 인증이 필요한 엔드포인트로 요청
-            const res = await safeApiCall(`${API_BASE}/sessions`, {
-                method: 'GET'
-            });
-            console.log('인증 API 응답:', res);
-        }
-        testAuthApi();
     </script>
 </body>
 </html>

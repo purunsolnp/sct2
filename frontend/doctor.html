@@ -939,6 +939,16 @@
                 }
                 const data = await interpretationResponse.json();
                 currentInterpretation = data.interpretation;
+                // 해석 후처리: ## 헤더 제거, 번호 강조
+                let formatted = data.interpretation
+                  .replace(/^##.*$/gm, '')
+                  .replace(/(\d{1,2})\. /g, '<span class="item-no">$1.</span> ');
+                // 팝업에 스타일 추가
+                popup.document.head.innerHTML += `
+                  <style>
+                    .item-no { font-weight: bold; color: #4299e1; margin-right: 6px; font-size:1.1em; }
+                  </style>
+                `;
                 // 해석 생성일 표시 (KST)
                 const createdAt = data.created_at ? formatDate(data.created_at) : formatDate(new Date());
                 // 해석 내용 렌더링
@@ -949,12 +959,12 @@
                         <button onclick="window.close()" style="padding:8px 18px; border-radius:6px; background:#e53e3e; color:white; border:none; font-weight:600;">닫기</button>
                     </div>
                     <div style="max-width: 800px; margin: 0 auto; background: #f8fafc; border-radius: 14px; box-shadow: 0 2px 12px rgba(66,153,225,0.08); padding: 40px 32px; font-family: 'Malgun Gothic', 'Noto Sans KR', 'Segoe UI', sans-serif;">
-                        <h2 style="color:#2b6cb0; font-size:2em; margin-bottom:18px; border-bottom:2px solid #4299e1; padding-bottom:10px;">�� SCT 검사 결과 분석</h2>
+                        <h2 style="color:#2b6cb0; font-size:2em; margin-bottom:18px; border-bottom:2px solid #4299e1; padding-bottom:10px;">SCT 검사 결과 분석</h2>
                         <div style="margin-bottom: 24px; padding: 18px; background: #ebf8ff; border-radius: 8px; border-left: 5px solid #4299e1;">
                             <h3 style="margin: 0; color: #2b6cb0; font-size:1.2em;">환자: ${data.patient_name}</h3>
                             <p style="margin: 5px 0 0 0; color: #2c5282; font-size:1em;">해석 생성일: ${createdAt}</p>
                         </div>
-                        <div style="white-space: pre-wrap; line-height: 1.8; font-size: 1.08em; color:#222;">${data.interpretation.replace(/\n/g, '<br>')}</div>
+                        <div style="white-space: pre-wrap; line-height: 1.8; font-size: 1.08em; color:#222;">${formatted.replace(/\n/g, '<br>')}</div>
                     </div>
                 `;
             } catch (error) {

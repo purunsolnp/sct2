@@ -461,7 +461,10 @@
                         },
                         scales: {
                             y: {
-                                beginAtZero: true
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                }
                             }
                         }
                     }
@@ -963,7 +966,8 @@
                 if (!response.ok) throw new Error('월별 통계 로드 실패');
                 const data = await response.json();
 
-                console.log('📈 월별 통계 원본 데이터:', data.monthly_stats);
+                // Debugging: log raw data (이제 필요 없으므로 제거)
+                // console.log('📈 월별 통계 원본 데이터:', data.monthly_stats);
 
                 // Ensure data points are numbers and find the maximum
                 const allSessionValues = data.monthly_stats.flatMap(stat => [
@@ -971,7 +975,8 @@
                     Number(stat.completed_sessions || 0)
                 ]);
                 const maxDataValue = allSessionValues.length > 0 ? Math.max(...allSessionValues) : 0;
-                const maxY = Math.max(maxDataValue + (maxDataValue * 0.1), 10); // Add 10% padding, minimum 10
+                
+                // We will ensure y-axis always displays from 0 to 10 with step 1 for small values
 
                 // 차트 컨테이너 생성
                 const container = document.createElement('div');
@@ -980,14 +985,29 @@
                 container.style.background = '#f7fafc';
                 container.style.borderRadius = '10px';
                 container.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
+                container.style.height = '350px'; // 컨테이너에 고정 높이 추가
+                container.style.overflow = 'hidden'; // 추가: 컨테이너의 내용을 벗어나지 않도록
                 container.innerHTML = `<strong style="font-size: 1.1em;">👤 ${name} (${doctorId}) 월별 검사 통계</strong>`;
-                const canvas = document.createElement('canvas');
+                
+                // 캔버스 초기화 및 새로 생성 (강화된 초기화)
+                let canvas = document.getElementById('user-monthly-chart-canvas');
+                if (canvas) {
+                    canvas.remove();
+                }
+                canvas = document.createElement('canvas');
+                canvas.id = 'user-monthly-chart-canvas'; // 새로운 ID 부여
                 canvas.style.marginTop = '15px';
-                canvas.style.height = '300px';
                 container.appendChild(canvas);
+
+                document.getElementById('user-detail-stats').innerHTML = '';
+                document.getElementById('user-detail-stats').appendChild(container);
+                
                 if (window.userMonthlyChart) {
                     window.userMonthlyChart.destroy();
                 }
+
+                // Y축 설정 값 로그 (디버깅)
+                console.log('📊 Chart Y-axis Config:', { max: 10, stepSize: 1 });
 
                 window.userMonthlyChart = new Chart(canvas.getContext('2d'), {
                     type: 'bar',
@@ -998,13 +1018,15 @@
                             data: data.monthly_stats.map(stat => Number(stat.total_sessions) || 0),
                             backgroundColor: 'rgba(66, 153, 225, 0.8)',
                             borderColor: 'rgba(66, 153, 225, 1)',
-                            borderWidth: 1
+                            borderWidth: 1,
+                            minBarLength: 20 // 최소 막대 길이 설정
                         }, {
                             label: '완료된 검사',
                             data: data.monthly_stats.map(stat => Number(stat.completed_sessions) || 0),
                             backgroundColor: 'rgba(56, 161, 105, 0.8)',
                             borderColor: 'rgba(56, 161, 105, 1)',
-                            borderWidth: 1
+                            borderWidth: 1,
+                            minBarLength: 20 // 최소 막대 길이 설정
                         }]
                     },
                     options: {
@@ -1015,7 +1037,7 @@
                                 display: true,
                                 text: '월별 검사 현황'
                             },
-                            tooltip: { // Enhanced tooltip for debugging
+                            tooltip: {
                                 callbacks: {
                                     label: function(context) {
                                         const label = context.dataset.label || '';
@@ -1029,7 +1051,10 @@
                             y: {
                                 min: 0, // Explicitly set min to 0
                                 beginAtZero: true,
-                                suggestedMax: maxY,
+                                max: 10, // Explicitly set max to 10 for consistent small-value scaling
+                                ticks: {
+                                    stepSize: 1 // Explicitly set stepSize to 1
+                                },
                                 title: {
                                     display: true,
                                     text: '검사 수'
@@ -1038,7 +1063,7 @@
                         }
                     }
                 });
-                // 요약 정보 추가
+                // 요약 정보 추가 (복구)
                 const summary = document.createElement('div');
                 summary.style.marginTop = '15px';
                 summary.style.display = 'flex';
@@ -1062,8 +1087,6 @@
                     </div>
                 `;
                 container.appendChild(summary);
-                document.getElementById('user-detail-stats').innerHTML = '';
-                document.getElementById('user-detail-stats').appendChild(container);
             } catch (e) {
                 console.error('월별 통계 로드 오류:', e);
                 document.getElementById('user-detail-stats').innerHTML = '<div style="color: #e53e3e; padding: 15px; background: #fff5f5; border-radius: 8px;">월별 통계 정보를 불러올 수 없습니다.</div>';

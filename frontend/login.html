@@ -331,101 +331,42 @@
             }
             
             // 폼 제출 이벤트
-            document.getElementById('login-form').addEventListener('submit', handleLogin);
+            const loginForm = document.getElementById('login-form');
+            if (loginForm) {
+                loginForm.onsubmit = handleLogin;
+            }
         });
         
         // 로그인 처리
         async function handleLogin(e) {
             e.preventDefault();
-            
-            const doctorId = document.getElementById('doctor-id').value.trim();
-            const password = document.getElementById('password').value;
-            
-            if (!doctorId || !password) {
-                showAlert('ID와 비밀번호를 모두 입력해주세요.', 'error');
+            const doctorIdInput = document.getElementById('doctor-id');
+            const passwordInput = document.getElementById('password');
+            if (!doctorIdInput || !passwordInput) {
+                alert('입력란을 찾을 수 없습니다.');
                 return;
             }
-            
-            const loginBtn = document.getElementById('login-btn');
-            const originalText = loginBtn.innerHTML;
-            
-            // 로딩 상태
-            loginBtn.disabled = true;
-            loginBtn.innerHTML = '<div class="loading-spinner"></div>로그인 중...';
-            
+            const doctorId = doctorIdInput.value.trim();
+            const password = passwordInput.value;
+
             try {
-                // 먼저 데모 계정 확인
-                if (isDemoAccount(doctorId, password)) {
-                    // 데모 계정 로그인 성공
-                    const userData = {
-                        doctorId: doctorId,
-                        name: getDemoAccountName(doctorId),
-                        loginTime: new Date().toISOString()
-                    };
-
-                    localStorage.setItem('currentUser', JSON.stringify(userData));
-
-                    setTimeout(() => {
-                        // 관리자는 admin.html로, 일반 의사는 doctor.html로
-                        if (userData.doctorId === 'admin' || userData.doctorId === 'doctor1') {
-                            window.location.href = 'admin.html';
-                        } else {
-                            window.location.href = 'doctor.html';
-                        }
-                    }, 1500);
-                    
-                    return;
-                }
-                
-                // 실제 API 호출
-                const response = await fetch(`${API_BASE}/auth/login`, {
+                const res = await fetch('/auth/login', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        doctor_id: doctorId,
-                        password: password
-                    })
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ doctor_id: doctorId, password })
                 });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    
-                    // 토큰과 사용자 정보 저장
-                    localStorage.setItem('access_token', data.access_token);
-                    localStorage.setItem('currentUser', JSON.stringify({
-                        doctorId: data.user_info.doctor_id,
-                        name: data.user_info.name,
-                        email: data.user_info.email,
-                        specialty: data.user_info.specialty,
-                        hospital: data.user_info.hospital,
-                        loginTime: new Date().toISOString()
-                    }));
-                    
-                    showAlert('로그인 성공! 대시보드로 이동합니다...', 'success');
-                    
-                    const userData = response.user_info || {};
-                    const doctorId = (userData.doctor_id || '').toLowerCase();
-                    if (doctorId === 'admin' || doctorId === 'doctor1') {
-                        window.location.href = 'admin.html';
-                    } else {
-                        window.location.href = 'doctor.html';
-                    }
-                    
+                const data = await res.json();
+                if (res.ok && data.access_token) {
+                    localStorage.setItem('token', data.access_token);
+                    localStorage.setItem('doctor_id', doctorId); // 입력값 사용
+                    window.location.href = '/frontend/patient.html'; // 예시: 환자 페이지로 이동
+                } else if (data.detail) {
+                    alert(data.detail);
                 } else {
-                    const errorData = await response.json();
-                    console.error('Login failed:', errorData);
-                    showAlert('잘못된 ID 또는 비밀번호입니다.', 'error');
+                    alert('로그인 실패: 알 수 없는 오류');
                 }
-                
-            } catch (error) {
-                console.error('Login error:', error);
-                showAlert('로그인 중 오류가 발생했습니다. 서버 연결을 확인해주세요.', 'error');
-            } finally {
-                // 로딩 상태 해제
-                loginBtn.disabled = false;
-                loginBtn.innerHTML = originalText;
+            } catch (err) {
+                alert('서버 연결 오류');
             }
         }
         

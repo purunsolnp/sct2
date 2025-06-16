@@ -2057,6 +2057,51 @@ def get_current_user():
     # TODO: Replace with real authentication logic (e.g., JWT token validation)
     return "admin"
 
+class PasswordChangeRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+@app.post("/auth/change-password")
+async def change_password(
+    data: PasswordChangeRequest,
+    current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    user = db.query(User).filter(User.doctor_id == current_user).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
+
+    # 현재 비밀번호 확인 (임시 평문/해시 모두 허용)
+    if not verify_password(data.current_password, user.password):
+        raise HTTPException(status_code=401, detail="현재 비밀번호가 일치하지 않습니다.")
+
+    # 새 비밀번호 정책 검사
+    if not validate_password(data.new_password):
+        raise HTTPException(
+            status_code=400,
+            detail="비밀번호는 8자 이상이며, 대문자, 소문자, 숫자, 특수문자를 포함해야 합니다."
+        )
+
+    # 새 비밀번호가 최근 사용한 비밀번호와 중복되는지 검사
+    if not check_password_history(user, data.new_password):
+        raise HTTPException(
+            status_code=400,
+            detail="최근 사용한 비밀번호는 사용할 수 없습니다."
+        )
+
+    # 비밀번호 변경
+    hashed_new = hash_password(data.new_password)
+    password_history = user.password_history or []
+    password_history.append(hashed_new)
+    if len(password_history) > 5:
+        password_history = password_history[-5:]
+    user.password = hashed_new
+    user.password_history = password_history
+    user.last_password_change = datetime.utcnow()
+    db.commit()
+
+    return {"message": "비밀번호가 성공적으로 변경되었습니다."}
+
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)

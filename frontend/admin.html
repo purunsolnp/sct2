@@ -596,23 +596,24 @@
                     headers: getApiHeaders(),
                     body: JSON.stringify({ is_verified: isVerified })
                 });
-                
                 if (!response.ok) {
                     throw new Error('사용자 상태 변경 실패');
                 }
-                
                 const result = await response.json();
                 alert(result.message);
-                
-                // 목록 새로고침
-                refreshUsers();
-                
+                // 목록 새로고침 (예외 처리)
+                try {
+                    refreshUsers();
+                } catch (e) {
+                    console.error('목록 새로고침 오류:', e);
+                }
             } catch (error) {
                 console.error('사용자 상태 변경 오류:', error);
                 alert('상태 변경 중 오류가 발생했습니다.');
-                
                 // 체크박스 원래 상태로 복원
-                refreshUsers();
+                try {
+                    refreshUsers();
+                } catch (e) {}
             }
         }
         
@@ -953,30 +954,21 @@
                 });
                 if (!response.ok) throw new Error('월별 통계 로드 실패');
                 const data = await response.json();
-                
-                // 차트를 위한 컨테이너 생성
+                // 차트 컨테이너 생성
                 const container = document.createElement('div');
                 container.style.margin = '18px 0 24px 0';
                 container.style.padding = '18px 20px';
                 container.style.background = '#f7fafc';
                 container.style.borderRadius = '10px';
                 container.style.boxShadow = '0 2px 8px rgba(0,0,0,0.04)';
-                
-                // 제목 추가
                 container.innerHTML = `<strong style="font-size: 1.1em;">👤 ${name} (${doctorId}) 월별 검사 통계</strong>`;
-                
-                // 차트를 위한 canvas 추가
                 const canvas = document.createElement('canvas');
                 canvas.style.marginTop = '15px';
                 canvas.style.height = '300px';
                 container.appendChild(canvas);
-                
-                // 기존 차트 제거
                 if (window.userMonthlyChart) {
                     window.userMonthlyChart.destroy();
                 }
-                
-                // 새 차트 생성
                 window.userMonthlyChart = new Chart(canvas.getContext('2d'), {
                     type: 'bar',
                     data: {
@@ -1002,20 +994,6 @@
                             title: {
                                 display: true,
                                 text: '월별 검사 현황'
-                            },
-                            tooltip: {
-                                callbacks: {
-                                    label: function(context) {
-                                        const label = context.dataset.label || '';
-                                        const value = context.raw;
-                                        const total = context.dataset.label === '총 검사 수' ? 
-                                            data.monthly_stats[context.dataIndex].total_sessions :
-                                            data.monthly_stats[context.dataIndex].completed_sessions;
-                                        const completionRate = context.dataset.label === '완료된 검사' ?
-                                            ` (${Math.round((total / data.monthly_stats[context.dataIndex].total_sessions * 100) || 0)}%)` : '';
-                                        return `${label}: ${value}건${completionRate}`;
-                                    }
-                                }
                             }
                         },
                         scales: {
@@ -1029,18 +1007,15 @@
                         }
                     }
                 });
-                
                 // 요약 정보 추가
                 const summary = document.createElement('div');
                 summary.style.marginTop = '15px';
                 summary.style.display = 'flex';
                 summary.style.gap = '15px';
                 summary.style.flexWrap = 'wrap';
-                
                 const totalSessions = data.monthly_stats.reduce((sum, stat) => sum + stat.total_sessions, 0);
                 const totalCompleted = data.monthly_stats.reduce((sum, stat) => sum + stat.completed_sessions, 0);
                 const avgCompletionRate = Math.round((totalCompleted / totalSessions * 100) || 0);
-                
                 summary.innerHTML = `
                     <div style="background: white; padding: 12px; border-radius: 8px; flex: 1; min-width: 150px;">
                         <div style="font-size: 0.9em; color: #666;">총 검사 수</div>
@@ -1055,15 +1030,12 @@
                         <div style="font-size: 1.5em; font-weight: bold; color: #805ad5;">${avgCompletionRate}%</div>
                     </div>
                 `;
-                
                 container.appendChild(summary);
-                document.getElementById('user-monthly-usage').innerHTML = '';
-                document.getElementById('user-monthly-usage').appendChild(container);
-                
+                document.getElementById('user-detail-stats').innerHTML = '';
+                document.getElementById('user-detail-stats').appendChild(container);
             } catch (e) {
                 console.error('월별 통계 로드 오류:', e);
-                document.getElementById('user-monthly-usage').innerHTML = 
-                    '<div style="color: #e53e3e; padding: 15px; background: #fff5f5; border-radius: 8px;">월별 통계 정보를 불러올 수 없습니다.</div>';
+                document.getElementById('user-detail-stats').innerHTML = '<div style="color: #e53e3e; padding: 15px; background: #fff5f5; border-radius: 8px;">월별 통계 정보를 불러올 수 없습니다.</div>';
             }
         }
 
@@ -1101,12 +1073,6 @@
         async function showUserMonthlyUsageCard(doctorId, name) {
             document.getElementById('user-detail-stats').innerHTML = '<div style="padding:20px;">불러오는 중...</div>';
             await showUserMonthlyUsage(doctorId, name);
-            // showUserMonthlyUsage가 user-monthly-usage에 그리므로, 그걸 user-detail-stats로 옮김
-            const usageDiv = document.getElementById('user-monthly-usage');
-            if (usageDiv) {
-                document.getElementById('user-detail-stats').innerHTML = usageDiv.innerHTML;
-                usageDiv.innerHTML = '';
-            }
         }
 
         // 페이지 로드 시 전체 이용자 테이블 렌더링

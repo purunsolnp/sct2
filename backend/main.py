@@ -186,7 +186,7 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     doctor_id = Column(String, unique=True, index=True)
     email = Column(String, unique=True, index=True)
-    password = Column(String)
+    hashed_password = Column(String)
     first_name = Column(String)
     last_name = Column(String)
     specialty = Column(String)
@@ -492,7 +492,7 @@ async def register(user: UserCreate, db = Depends(get_db)):
         new_user = User(
             doctor_id=user.doctor_id,
             email=user.email,
-            password=hashed_password,
+            hashed_password=hashed_password,
             first_name=user.first_name,
             last_name=user.last_name,
             specialty=user.specialty,
@@ -522,7 +522,7 @@ async def login(user_login: UserLogin, db = Depends(get_db)):
     try:
         user = db.query(User).filter(User.doctor_id == user_login.doctor_id).first()
         # 기존 로그인 검증 로직 유지
-        if not user or not verify_password(user_login.password, user.password):
+        if not user or not verify_password(user_login.password, user.hashed_password):
             # 기존 실패 처리
             raise HTTPException(status_code=401, detail="잘못된 ID 또는 비밀번호입니다")
         # 기존 로그인 성공 처리
@@ -1833,7 +1833,7 @@ async def login(
                 user.lock_until = None
                 db.commit()
         
-        if not user or not verify_password(user_data.password, user.password):
+        if not user or not verify_password(user_data.password, user.hashed_password):
             if user:
                 user.login_attempts += 1
                 user.last_login_attempt = datetime.utcnow()
@@ -2072,7 +2072,7 @@ async def change_password(
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다.")
 
     # 현재 비밀번호 확인 (임시 평문/해시 모두 허용)
-    if not verify_password(data.current_password, user.password):
+    if not verify_password(data.current_password, user.hashed_password):
         raise HTTPException(status_code=401, detail="현재 비밀번호가 일치하지 않습니다.")
 
     # 새 비밀번호 정책 검사
@@ -2095,7 +2095,7 @@ async def change_password(
     password_history.append(hashed_new)
     if len(password_history) > 5:
         password_history = password_history[-5:]
-    user.password = hashed_new
+    user.hashed_password = hashed_new
     user.password_history = password_history
     user.last_password_change = datetime.utcnow()
     db.commit()

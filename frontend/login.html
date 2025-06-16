@@ -335,8 +335,8 @@
         });
         
         // 로그인 처리
-        async function handleLogin(event) {
-            event.preventDefault();
+        async function handleLogin(e) {
+            e.preventDefault();
             
             const doctorId = document.getElementById('doctor-id').value.trim();
             const password = document.getElementById('password').value;

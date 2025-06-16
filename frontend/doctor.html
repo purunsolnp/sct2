@@ -1541,8 +1541,12 @@
             let formattedContent = content.replace(/\*\*/g, '');
             
             // 번호가 있는 섹션을 찾아서 줄바꿈과 굵은 글씨 적용
-            // 패턴: 숫자.공백텍스트 형태를 찾아서 처리
-            formattedContent = formattedContent.replace(/(\d+\.\s*[^\n]+)/g, function(match) {
+            // 패턴: 숫자.공백+한글/영문 제목 형태만 처리 (날짜 제외)
+            formattedContent = formattedContent.replace(/(\d+\.\s*[가-힣a-zA-Z][^\n]*)/g, function(match) {
+                // 날짜 패턴이 포함된 경우는 제외 (2025-06- 같은 패턴)
+                if (match.includes('2025-') || match.includes('검사일:') || /\d{4}-\d{1,2}-\d{0,2}/.test(match)) {
+                    return match; // 원본 그대로 반환
+                }
                 // 앞에 줄바꿈을 추가하고 굵은 글씨로 만들기
                 return '<br><br><strong>' + match.trim() + '</strong>';
             });

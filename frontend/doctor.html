@@ -295,6 +295,50 @@
             border-radius: 6px;
             border: 1px solid #e2e8f0;
         }
+        @media print {
+            body, html {
+                background: white !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .modal, .modal-content, .modal-header, .modal-body {
+                box-shadow: none !important;
+                background: white !important;
+                color: #222 !important;
+            }
+            .modal {
+                position: static !important;
+                display: block !important;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+                z-index: 1 !important;
+            }
+            .modal-header, .modal-actions, .close-button, .action-button {
+                display: none !important;
+            }
+            .modal-body, .interpretation-content {
+                padding: 0 !important;
+                margin: 0 !important;
+                background: white !important;
+                color: #222 !important;
+                font-size: 1em !important;
+                box-shadow: none !important;
+            }
+            #interpretation-modal {
+                position: static !important;
+                display: block !important;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+                background: white !important;
+                box-shadow: none !important;
+            }
+            @page {
+                size: A4;
+                margin: 2cm;
+            }
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>

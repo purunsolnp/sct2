@@ -1540,11 +1540,21 @@ async def generate_ai_interpretation(responses: List[SCTResponse], patient_name:
     if not openai_client:
         logger.warning("⚠️ OpenAI 클라이언트가 초기화되지 않았습니다. 기본 해석을 반환합니다.")
         return generate_default_interpretation(responses, patient_name)
-    
     try:
+        # 검사일(제출일) 정보 추출
+        exam_date = None
+        if responses and hasattr(responses[0], 'created_at') and responses[0].created_at:
+            exam_date = responses[0].created_at.strftime('%Y-%m-%d')
+        else:
+            exam_date = get_kst_now().strftime('%Y-%m-%d')
+
         # 임상적으로 풍부한 프롬프트 구성 (각 항목 200자 이상)
         prompt = f"""
 당신은 숙련된 임상심리사입니다. 아래의 SCT(문장완성검사) 응답을 바탕으로 임상 해석 보고서를 작성하세요.
+
+환자명: {patient_name}
+검사일: {exam_date}
+
 보고서는 다음과 같은 구조와 임상적 깊이를 반드시 따라야 합니다.
 
 1. 검사 개요  

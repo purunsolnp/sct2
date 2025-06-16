@@ -185,22 +185,27 @@
         }
         .modal-content {
             background-color: #fefefe;
-            margin: 15% auto;
+            margin: 5% auto;
             padding: 20px;
             border: 1px solid #888;
-            width: 80%;
-            max-width: 600px;
+            width: 90%;
+            max-width: 900px;
             border-radius: 10px;
+            max-height: 85vh;
+            overflow-y: auto;
         }
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
             margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e2e8f0;
         }
         .modal-header h2 {
             font-size: 1.5em;
             font-weight: 600;
+            color: #2d3748;
         }
         .modal-actions {
             display: flex;
@@ -233,6 +238,8 @@
             max-height: 70vh;
             overflow-y: auto;
             padding: 20px;
+            line-height: 1.8;
+            font-size: 1.1em;
         }
         .response-item {
             margin-bottom: 20px;
@@ -295,45 +302,260 @@
             border-radius: 6px;
             border: 1px solid #e2e8f0;
         }
+
+        /* 보고서 스타일 개선 */
         .report-title-print {
-            font-size: 2.2em;
+            font-size: 2.5em;
             font-weight: bold;
             color: #2b6cb0;
             text-align: center;
-            margin-bottom: 32px;
+            margin-bottom: 40px;
             margin-top: 0;
-            letter-spacing: 1px;
+            letter-spacing: 2px;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
         }
+
+        .interpretation-content h1, .interpretation-content h2, .interpretation-content h3 {
+            color: #2d3748;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            padding-bottom: 8px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+
+        .interpretation-content h1 {
+            font-size: 1.8em;
+            color: #2b6cb0;
+        }
+
+        .interpretation-content h2 {
+            font-size: 1.5em;
+            color: #3182ce;
+        }
+
+        .interpretation-content h3 {
+            font-size: 1.3em;
+            color: #4299e1;
+        }
+
+        .interpretation-content p {
+            margin-bottom: 16px;
+            text-align: justify;
+            word-break: keep-all;
+        }
+
+        .interpretation-content ul, .interpretation-content ol {
+            margin-bottom: 16px;
+            padding-left: 25px;
+        }
+
+        .interpretation-content li {
+            margin-bottom: 8px;
+        }
+
+        .interpretation-content strong {
+            color: #2d3748;
+            font-weight: 600;
+        }
+
+        .interpretation-content em {
+            color: #4a5568;
+            font-style: italic;
+        }
+
+        /* PDF 인쇄를 위한 스타일 개선 */
         @media print {
             body, html {
                 background: white !important;
                 margin: 0 !important;
                 padding: 0 !important;
+                font-family: 'Times New Roman', serif !important;
+                font-size: 12pt !important;
+                line-height: 1.6 !important;
+                color: #000 !important;
             }
-            /* 모든 UI 숨김 */
+            
+            /* 모든 UI 요소 숨김 */
             .header, .container, .modal-header, .modal-actions, .close-button, .action-button, .modal, .modal-content, .modal-body, .modal-footer, .stats-grid, .card, .search-controls, .pagination, .sessions-table, .stat-card, .stat-number, .stat-label, .form-group, .form-input, .form-select, .button, .button-secondary, .alert, .link-display, .link-text, .logout-btn, .user-info, .debug-info, .debug-content, .footer, .no-print, .print-hide {
                 display: none !important;
             }
+            
             /* 보고서 본문만 인쇄 */
-            #interpretation-modal, .interpretation-content {
+            .print-area {
                 display: block !important;
                 position: static !important;
                 width: 100% !important;
                 height: auto !important;
                 background: white !important;
-                color: #222 !important;
+                color: #000 !important;
                 box-shadow: none !important;
                 margin: 0 !important;
                 padding: 0 !important;
-                font-size: 1.1em !important;
+                font-size: 12pt !important;
+                line-height: 1.6 !important;
+                page-break-inside: avoid;
             }
-            /* 인쇄 시 페이지 넘버, 머리글/푸터 숨김 */
+
+            .print-area .report-title-print {
+                font-size: 24pt !important;
+                color: #000 !important;
+                text-align: center !important;
+                margin-bottom: 30pt !important;
+                margin-top: 0 !important;
+                font-weight: bold !important;
+                text-shadow: none !important;
+                letter-spacing: 1pt !important;
+            }
+
+            .print-area h1 {
+                font-size: 16pt !important;
+                color: #000 !important;
+                margin-top: 20pt !important;
+                margin-bottom: 10pt !important;
+                padding-bottom: 5pt !important;
+                border-bottom: 1pt solid #000 !important;
+                font-weight: bold !important;
+            }
+
+            .print-area h2 {
+                font-size: 14pt !important;
+                color: #000 !important;
+                margin-top: 16pt !important;
+                margin-bottom: 8pt !important;
+                padding-bottom: 3pt !important;
+                border-bottom: 0.5pt solid #000 !important;
+                font-weight: bold !important;
+            }
+
+            .print-area h3 {
+                font-size: 13pt !important;
+                color: #000 !important;
+                margin-top: 14pt !important;
+                margin-bottom: 7pt !important;
+                font-weight: bold !important;
+            }
+
+            .print-area p {
+                margin-bottom: 12pt !important;
+                text-align: justify !important;
+                font-size: 12pt !important;
+                line-height: 1.6 !important;
+                word-break: keep-all !important;
+            }
+
+            .print-area ul, .print-area ol {
+                margin-bottom: 12pt !important;
+                padding-left: 20pt !important;
+            }
+
+            .print-area li {
+                margin-bottom: 6pt !important;
+                font-size: 12pt !important;
+                line-height: 1.5 !important;
+            }
+
+            .print-area strong {
+                color: #000 !important;
+                font-weight: bold !important;
+            }
+
+            .print-area em {
+                color: #000 !important;
+                font-style: italic !important;
+            }
+
+            /* 페이지 설정 */
             @page {
                 size: A4;
-                margin: 2cm;
+                margin: 2.5cm;
+                orphans: 3;
+                widows: 3;
             }
-            /* 인쇄 시 스크롤바 숨김 */
-            ::-webkit-scrollbar { display: none !important; }
+
+            /* 페이지 나누기 */
+            .print-area h1, .print-area h2 {
+                page-break-after: avoid;
+            }
+
+            .print-area p, .print-area li {
+                page-break-inside: avoid;
+            }
+
+            /* 스크롤바 숨김 */
+            ::-webkit-scrollbar { 
+                display: none !important; 
+            }
+        }
+
+        /* 로딩 및 알림 스타일 */
+        .loading-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0,0,0,0.3);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .loading-content {
+            background: white;
+            padding: 40px 50px;
+            border-radius: 12px;
+            box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+            font-size: 1.2em;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        .spinner {
+            margin-bottom: 20px;
+        }
+
+        .spinner svg {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .success-message, .error-message {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 15px 20px;
+            border-radius: 8px;
+            color: white;
+            font-weight: 500;
+            z-index: 10000;
+            animation: slideIn 0.3s ease-out;
+        }
+
+        .success-message {
+            background: #48bb78;
+        }
+
+        .error-message {
+            background: #f56565;
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
         }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -456,8 +678,11 @@
             <div class="modal-header">
                 <h2>SCT 해석 결과</h2>
                 <div class="modal-actions">
+                    <button onclick="downloadPDF()" class="action-button">
+                        <span class="icon">📄</span> PDF 다운로드
+                    </button>
                     <button onclick="printInterpretation()" class="action-button">
-                        <span class="icon">🖨️</span> PDF로 저장/인쇄
+                        <span class="icon">🖨️</span> 인쇄
                     </button>
                     <button onclick="regenerateInterpretation()" class="action-button">
                         <span class="icon">🔄</span> 재생성
@@ -487,6 +712,9 @@
         </div>
     </div>
 
+    <!-- PDF 생성을 위한 숨겨진 영역 -->
+    <div id="print-area" class="print-area" style="display: none;"></div>
+
     <script>
         // === API 서버 주소를 여기에 설정하세요 ===
         const API_BASE = "https://sct-backend-7epf.onrender.com";
@@ -510,28 +738,6 @@
             const timestamp = new Date().toLocaleTimeString();
             const logMessage = `[${timestamp}] ${message}`;
             console.log(logMessage, data || '');
-            
-            if (debugMode) {
-                const debugContent = document.getElementById('debug-content');
-                const logEntry = document.createElement('div');
-                logEntry.innerHTML = `${logMessage}${data ? ': ' + JSON.stringify(data, null, 2) : ''}`;
-                debugContent.appendChild(logEntry);
-                debugContent.scrollTop = debugContent.scrollHeight;
-            }
-        }
-        
-        function toggleDebug() {
-            debugMode = !debugMode;
-            const debugInfo = document.getElementById('debug-info');
-            debugInfo.style.display = debugMode ? 'block' : 'none';
-            
-            if (debugMode) {
-                document.getElementById('debug-content').innerHTML = '';
-                debugLog('디버그 모드 활성화');
-                debugLog('현재 API_BASE', API_BASE);
-                debugLog('현재 doctorId', doctorId);
-                debugLog('현재 sessions 수', allSessions.length);
-            }
         }
         
         // API 헤더 (JWT 토큰 포함)
@@ -1035,34 +1241,34 @@
                     throw new Error('세션 삭제에 실패했습니다.');
                 }
                 
-                alert('세션이 성공적으로 삭제되었습니다.');
+                showSuccess('세션이 성공적으로 삭제되었습니다.');
                 
                 // 세션 목록 새로고침
                 await loadSessions();
                 
             } catch (error) {
                 debugLog('세션 삭제 오류', error.message);
-                alert('세션 삭제 중 오류가 발생했습니다: ' + error.message);
+                showError('세션 삭제 중 오류가 발생했습니다: ' + error.message);
             }
         }
         
         // 링크 복사
         function copyLink() {
             navigator.clipboard.writeText(currentSessionLink).then(() => {
-                alert('링크가 클립보드에 복사되었습니다!');
+                showSuccess('링크가 클립보드에 복사되었습니다!');
             });
         }
         
         // 세션 링크 복사
         function copySessionLink(link) {
             navigator.clipboard.writeText(link).then(() => {
-                alert('검사 링크가 클립보드에 복사되었습니다!');
+                showSuccess('검사 링크가 클립보드에 복사되었습니다!');
             });
         }
         
         // 카카오톡 전송
         function sendKakaoLink() {
-            alert('카카오톡 전송 기능은 추후 구현 예정입니다.\n현재는 링크를 복사해서 직접 전송해주세요.');
+            showError('카카오톡 전송 기능은 추후 구현 예정입니다.\n현재는 링크를 복사해서 직접 전송해주세요.');
         }
         
         // 세션 목록 새로고침
@@ -1071,21 +1277,25 @@
             loadSessions();
         }
         
-        // 분석 모달 열기 (팝업 대신 모달 사용)
+        // 분석 모달 열기
         async function openAnalysisModal(sessionId) {
             debugLog('분석 모달 열기', sessionId);
             currentSessionId = sessionId;
 
             // 모달 열기
             document.getElementById('interpretation-modal').style.display = 'block';
-            document.getElementById('interpretation-content').innerHTML = '로딩중...';
+            document.getElementById('interpretation-content').innerHTML = '<div style="text-align: center; padding: 40px;">로딩중...</div>';
 
             try {
+                showLoading('해석 결과를 불러오는 중입니다...');
+                
                 let interpretationResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpretation`, {
                     headers: getApiHeaders()
                 });
+                
                 if (interpretationResponse.status === 404) {
                     // 해석이 없으면 새로 생성
+                    showLoading('새로운 해석을 생성하는 중입니다...');
                     await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpret`, {
                         method: 'POST',
                         headers: getApiHeaders()
@@ -1094,14 +1304,20 @@
                         headers: getApiHeaders()
                     });
                 }
+                
                 if (!interpretationResponse.ok) {
                     throw new Error('해석 결과를 불러올 수 없습니다.');
                 }
+                
                 const data = await interpretationResponse.json();
                 currentInterpretation = data.interpretation;
                 renderInterpretationWithTitle(data.interpretation);
+                
             } catch (error) {
-                document.getElementById('interpretation-content').innerHTML = `<div style="color:red;">❌ 오류: ${error.message}</div>`;
+                document.getElementById('interpretation-content').innerHTML = `<div style="color:red; text-align: center; padding: 40px;">❌ 오류: ${error.message}</div>`;
+                showError('해석 결과를 불러오는 중 오류가 발생했습니다.');
+            } finally {
+                hideLoading();
             }
         }
         
@@ -1115,9 +1331,7 @@
                 
                 const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/regenerate`, {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                    }
+                    headers: getApiHeaders()
                 });
 
                 if (!response.ok) {
@@ -1125,6 +1339,7 @@
                 }
 
                 const data = await response.json();
+                currentInterpretation = data.interpretation;
                 
                 // 해석 내용 업데이트
                 renderInterpretationWithTitle(data.interpretation);
@@ -1148,9 +1363,7 @@
                 showLoading('응답을 불러오는 중입니다...');
                 
                 const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/responses`, {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                    }
+                    headers: getApiHeaders()
                 });
 
                 if (!response.ok) {
@@ -1182,7 +1395,7 @@
             }
         }
 
-        // 모달 닫기 함수 수정
+        // 모달 닫기 함수
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
             if (modalId === 'responses-modal') {
@@ -1190,31 +1403,71 @@
             }
         }
 
-        function printInterpretation() {
-            window.print();
+        // PDF 다운로드 함수 (개선됨)
+        async function downloadPDF() {
+            if (!currentInterpretation) {
+                showError('다운로드할 해석 결과가 없습니다.');
+                return;
+            }
+
+            try {
+                showLoading('PDF를 생성하는 중입니다...');
+                
+                // 현재 세션 정보 가져오기
+                const session = allSessions.find(s => s.session_id === currentSessionId);
+                const patientName = session ? (session.patient_name || session.patientName || 'Unknown') : 'Unknown';
+                const today = new Date().toLocaleDateString('ko-KR');
+                
+                // PDF 생성을 위한 HTML 준비
+                const printContent = `
+                    <div class="report-title-print">문장완성검사 보고서</div>
+                    <div style="margin-bottom: 30px; text-align: center; color: #666;">
+                        <p><strong>환자명:</strong> ${patientName}</p>
+                        <p><strong>검사일:</strong> ${today}</p>
+                        <p><strong>담당의:</strong> ${doctorName}</p>
+                    </div>
+                    ${currentInterpretation}
+                `;
+                
+                // 숨겨진 인쇄 영역에 내용 설정
+                const printArea = document.getElementById('print-area');
+                printArea.innerHTML = printContent;
+                printArea.style.display = 'block';
+                
+                // 브라우저의 인쇄 다이얼로그 열기
+                setTimeout(() => {
+                    window.print();
+                    printArea.style.display = 'none';
+                }, 100);
+                
+            } catch (error) {
+                console.error('PDF 생성 오류:', error);
+                showError('PDF 생성 중 오류가 발생했습니다.');
+            } finally {
+                hideLoading();
+            }
         }
 
+        // 인쇄 함수 (개선됨)
+        function printInterpretation() {
+            downloadPDF(); // 같은 기능 사용
+        }
+
+        // 로딩 표시 함수
         function showLoading(message = '처리 중입니다...') {
             if (document.getElementById('global-loading')) return;
+            
             const loadingDiv = document.createElement('div');
             loadingDiv.id = 'global-loading';
-            loadingDiv.style.position = 'fixed';
-            loadingDiv.style.top = '0';
-            loadingDiv.style.left = '0';
-            loadingDiv.style.width = '100vw';
-            loadingDiv.style.height = '100vh';
-            loadingDiv.style.background = 'rgba(0,0,0,0.25)';
-            loadingDiv.style.zIndex = '9999';
-            loadingDiv.style.display = 'flex';
-            loadingDiv.style.flexDirection = 'column';
-            loadingDiv.style.justifyContent = 'center';
-            loadingDiv.style.alignItems = 'center';
+            loadingDiv.className = 'loading-overlay';
             loadingDiv.innerHTML = `
-                <div style="background:white;padding:30px 40px;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.12);font-size:1.2em;display:flex;flex-direction:column;align-items:center;">
-                    <div class="spinner" style="margin-bottom:18px;">
+                <div class="loading-content">
+                    <div class="spinner">
                         <svg width="40" height="40" viewBox="0 0 40 40">
-                            <circle cx="20" cy="20" r="16" stroke="#4299e1" stroke-width="4" fill="none" stroke-dasharray="80" stroke-dashoffset="60">
-                                <animateTransform attributeName="transform" type="rotate" from="0 20 20" to="360 20 20" dur="1s" repeatCount="indefinite"/>
+                            <circle cx="20" cy="20" r="16" stroke="#4299e1" stroke-width="4" fill="none" 
+                                    stroke-dasharray="80" stroke-dashoffset="60">
+                                <animateTransform attributeName="transform" type="rotate" 
+                                                from="0 20 20" to="360 20 20" dur="1s" repeatCount="indefinite"/>
                             </circle>
                         </svg>
                     </div>
@@ -1224,14 +1477,53 @@
             document.body.appendChild(loadingDiv);
         }
 
+        // 로딩 숨기기 함수
         function hideLoading() {
             const loadingDiv = document.getElementById('global-loading');
-            if (loadingDiv) loadingDiv.remove();
+            if (loadingDiv) {
+                loadingDiv.remove();
+            }
+        }
+
+        // 성공 메시지 표시
+        function showSuccess(message) {
+            const successDiv = document.createElement('div');
+            successDiv.className = 'success-message';
+            successDiv.textContent = message;
+            document.body.appendChild(successDiv);
+            
+            setTimeout(() => {
+                successDiv.remove();
+            }, 3000);
+        }
+
+        // 오류 메시지 표시
+        function showError(message) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-message';
+            errorDiv.textContent = message;
+            document.body.appendChild(errorDiv);
+            
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
         }
 
         // 해석 결과를 표시할 때 맨 위에 제목을 추가
         function renderInterpretationWithTitle(content) {
-            const title = '<div class="report-title-print">문장완성검사 보고서</div>';
+            const session = allSessions.find(s => s.session_id === currentSessionId);
+            const patientName = session ? (session.patient_name || session.patientName || 'Unknown') : 'Unknown';
+            const today = new Date().toLocaleDateString('ko-KR');
+            
+            const title = `
+                <div class="report-title-print">문장완성검사 보고서</div>
+                <div style="margin-bottom: 30px; text-align: center; color: #666; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px;">
+                    <p style="margin: 5px 0;"><strong>환자명:</strong> ${patientName}</p>
+                    <p style="margin: 5px 0;"><strong>검사일:</strong> ${today}</p>
+                    <p style="margin: 5px 0;"><strong>담당의:</strong> ${doctorName}</p>
+                </div>
+            `;
+            
             document.getElementById('interpretation-content').innerHTML = title + content;
         }
     </script>

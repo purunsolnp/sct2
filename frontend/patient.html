@@ -325,19 +325,28 @@
         const API_BASE = "https://sct-backend-7epf.onrender.com";
         // ======================================
         
+        // 인증(로그인) 체크: 토큰 없으면 로그인 페이지로 이동
+        const token = localStorage.getItem('token');
+        if (!token) {
+            alert('로그인이 필요합니다.');
+            window.location.href = '/frontend/login.html';
+        }
+        
         async function safeApiCall(url, options = {}) {
+            options.headers = options.headers || {};
+            options.headers['Authorization'] = 'Bearer ' + token;
             try {
                 console.log('API 호출 시도:', url);
                 
-                const response = await fetch(url, {
-                    ...options,
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...options.headers
-                    }
-                });
+                const response = await fetch(url, options);
                 
                 console.log('응답 받음:', response.status);
+                
+                if (response.status === 401) {
+                    alert('세션이 만료되었거나 로그인 정보가 없습니다.');
+                    window.location.href = '/frontend/login.html';
+                    return null;
+                }
                 
                 if (!response.ok) {
                     throw new Error(`서버 오류: ${response.status}`);

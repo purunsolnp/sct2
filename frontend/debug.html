@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SCT 세션 생성 디버깅</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: #f5f7fa;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            margin-bottom: 25px;
+        }
+        
+        .debug-section {
+            background: #f8f9fa;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 10px 0;
+            font-family: monospace;
+            font-size: 0.9em;
+        }
+        
+        .success { color: #22543d; background: #c6f6d5; }
+        .error { color: #c53030; background: #fed7d7; }
+        .warning { color: #744210; background: #faf089; }
+        .info { color: #2b6cb0; background: #bee3f8; }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-input {
+            width: 100%;
+            padding: 12px 15px;
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+        
+        .button {
+            background: linear-gradient(135deg, #4299e1, #667eea);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            margin: 5px;
+        }
+        
+        .button:hover {
+            opacity: 0.9;
+        }
+        
+        .button-secondary {
+            background: #e2e8f0;
+            color: #4a5568;
+        }
+        
+        #debug-log {
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        
+        .step {
+            margin: 10px 0;
+            padding: 10px;
+            border-left: 4px solid #4299e1;
+            background: #f7fafc;
+        }
+        
+        .step.completed {
+            border-left-color: #38a169;
+            background: #f0fff4;
+        }
+        
+        .step.error {
+            border-left-color: #e53e3e;
+            background: #fff5f5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>🔍 SCT 세션 생성 디버깅 도구</h1>
+            <p>이 도구로 세션 생성 과정의 각 단계를 확인할 수 있습니다.</p>
+        </div>
+
+        <!-- 1단계: 환경 확인 -->
+        <div class="card">
+            <h2>1️⃣ 환경 설정 확인</h2>
+            <button onclick="checkEnvironment()" class="button">환경 상태 확인</button>
+            <div id="env-status" class="debug-section"></div>
+        </div>
+
+        <!-- 2단계: API 연결 테스트 -->
+        <div class="card">
+            <h2>2️⃣ API 서버 연결 테스트</h2>
+            <button onclick="testApiConnection()" class="button">API 연결 확인</button>
+            <div id="api-status" class="debug-section"></div>
+        </div>
+
+        <!-- 3단계: 인증 토큰 확인 -->
+        <div class="card">
+            <h2>3️⃣ 인증 토큰 확인</h2>
+            <button onclick="checkAuthToken()" class="button">토큰 상태 확인</button>
+            <div id="token-status" class="debug-section"></div>
+        </div>
+
+        <!-- 4단계: 세션 생성 시뮬레이션 -->
+        <div class="card">
+            <h2>4️⃣ 세션 생성 시뮬레이션</h2>
+            <div class="form-group">
+                <label>테스트용 환자 이름:</label>
+                <input type="text" id="test-patient-name" class="form-input" value="테스트환자" placeholder="환자 이름 입력">
+            </div>
+            <button onclick="simulateSessionCreation()" class="button">세션 생성 테스트</button>
+            <div id="session-test" class="debug-section"></div>
+        </div>
+
+        <!-- 5단계: 전체 디버그 로그 -->
+        <div class="card">
+            <h2>5️⃣ 상세 디버그 로그</h2>
+            <button onclick="clearLog()" class="button button-secondary">로그 지우기</button>
+            <div id="debug-log" class="debug-section"></div>
+        </div>
+
+        <!-- 해결책 제안 -->
+        <div class="card">
+            <h2>🛠️ 문제 해결 가이드</h2>
+            <div id="solution-guide">
+                <div class="step">
+                    <strong>Step 1:</strong> 위의 "환경 상태 확인" 버튼을 눌러 기본 설정을 확인하세요.
+                </div>
+                <div class="step">
+                    <strong>Step 2:</strong> "API 연결 확인" 버튼으로 서버 연결 상태를 확인하세요.
+                </div>
+                <div class="step">
+                    <strong>Step 3:</strong> "토큰 상태 확인" 버튼으로 로그인 상태를 확인하세요.
+                </div>
+                <div class="step">
+                    <strong>Step 4:</strong> "세션 생성 테스트"로 실제 API 호출을 시뮬레이션하세요.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'https://sct-backend-7epf.onrender.com';
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.getElementById('debug-log');
+            const colorClass = type === 'error' ? 'error' : type === 'success' ? 'success' : type === 'warning' ? 'warning' : 'info';
+            
+            logElement.innerHTML += `<div class="${colorClass}">[${timestamp}] ${message}</div>\n`;
+            logElement.scrollTop = logElement.scrollHeight;
+            
+            console.log(`[DEBUG] ${message}`);
+        }
+
+        function clearLog() {
+            document.getElementById('debug-log').innerHTML = '';
+        }
+
+        // 1단계: 환경 확인
+        function checkEnvironment() {
+            const statusDiv = document.getElementById('env-status');
+            let status = '';
+            let allGood = true;
+
+            log('환경 설정 확인 시작', 'info');
+
+            // localStorage 확인
+            const currentUser = localStorage.getItem('currentUser');
+            const accessToken = localStorage.getItem('access_token');
+
+            if (currentUser) {
+                try {
+                    const userData = JSON.parse(currentUser);
+                    status += `✅ 사용자 정보: ${userData.name} (${userData.doctorId})\n`;
+                    log(`사용자 정보 확인됨: ${userData.name}`, 'success');
+                } catch (e) {
+                    status += `❌ 사용자 정보 파싱 오류: ${e.message}\n`;
+                    log(`사용자 정보 파싱 오류: ${e.message}`, 'error');
+                    allGood = false;
+                }
+            } else {
+                status += `❌ 사용자 정보 없음 (로그인 필요)\n`;
+                log('사용자 정보 없음', 'error');
+                allGood = false;
+            }
+
+            if (accessToken) {
+                status += `✅ 액세스 토큰: ${accessToken.substring(0, 20)}...\n`;
+                log('액세스 토큰 확인됨', 'success');
+            } else {
+                status += `❌ 액세스 토큰 없음\n`;
+                log('액세스 토큰 없음', 'error');
+                allGood = false;
+            }
+
+            // API URL 확인
+            status += `🌐 API 서버: ${API_BASE}\n`;
+            log(`API 서버 URL: ${API_BASE}`, 'info');
+
+            // 브라우저 기능 확인
+            if (typeof fetch !== 'undefined') {
+                status += `✅ Fetch API 지원됨\n`;
+                log('Fetch API 지원 확인', 'success');
+            } else {
+                status += `❌ Fetch API 미지원\n`;
+                log('Fetch API 미지원', 'error');
+                allGood = false;
+            }
+
+            statusDiv.innerHTML = status;
+            statusDiv.className = `debug-section ${allGood ? 'success' : 'error'}`;
+
+            return allGood;
+        }
+
+        // 2단계: API 연결 테스트
+        async function testApiConnection() {
+            const statusDiv = document.getElementById('api-status');
+            let status = '';
+
+            log('API 서버 연결 테스트 시작', 'info');
+
+            try {
+                statusDiv.innerHTML = '🔄 API 서버 연결 확인 중...';
+                statusDiv.className = 'debug-section info';
+
+                const response = await fetch(`${API_BASE}/health`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                log(`API 응답 상태: ${response.status}`, 'info');
+
+                if (response.ok) {
+                    const data = await response.text();
+                    status += `✅ API 서버 연결 성공\n`;
+                    status += `📡 응답 코드: ${response.status}\n`;
+                    status += `📝 응답 내용: ${data}\n`;
+                    log('API 서버 연결 성공', 'success');
+                    statusDiv.className = 'debug-section success';
+                } else {
+                    status += `⚠️ API 서버 응답 이상\n`;
+                    status += `📡 응답 코드: ${response.status}\n`;
+                    status += `📝 응답 텍스트: ${response.statusText}\n`;
+                    log(`API 서버 응답 이상: ${response.status}`, 'warning');
+                    statusDiv.className = 'debug-section warning';
+                }
+
+            } catch (error) {
+                status += `❌ API 서버 연결 실패\n`;
+                status += `💥 오류: ${error.message}\n`;
+                log(`API 서버 연결 실패: ${error.message}`, 'error');
+                statusDiv.className = 'debug-section error';
+            }
+
+            statusDiv.innerHTML = status;
+        }
+
+        // 3단계: 인증 토큰 확인
+        async function checkAuthToken() {
+            const statusDiv = document.getElementById('token-status');
+            let status = '';
+
+            log('인증 토큰 유효성 확인 시작', 'info');
+
+            const token = localStorage.getItem('access_token');
+            if (!token) {
+                status = '❌ 액세스 토큰이 없습니다. 다시 로그인해주세요.';
+                statusDiv.innerHTML = status;
+                statusDiv.className = 'debug-section error';
+                log('액세스 토큰 없음', 'error');
+                return;
+            }
+
+            try {
+                statusDiv.innerHTML = '🔄 토큰 유효성 확인 중...';
+                statusDiv.className = 'debug-section info';
+
+                // 사용자 정보로 토큰 유효성 확인
+                const currentUser = localStorage.getItem('currentUser');
+                const userData = JSON.parse(currentUser);
+                
+                const response = await fetch(`${API_BASE}/sct/sessions/by-user/${userData.doctorId}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    }
+                });
+
+                log(`토큰 검증 응답: ${response.status}`, 'info');
+
+                if (response.status === 401) {
+                    status += `❌ 토큰이 만료되었습니다\n`;
+                    status += `🔄 다시 로그인이 필요합니다\n`;
+                    log('토큰 만료됨', 'error');
+                    statusDiv.className = 'debug-section error';
+                } else if (response.ok) {
+                    status += `✅ 토큰이 유효합니다\n`;
+                    status += `👤 사용자: ${userData.doctorId}\n`;
+                    log('토큰 유효성 확인됨', 'success');
+                    statusDiv.className = 'debug-section success';
+                } else {
+                    status += `⚠️ 토큰 검증 중 예상치 못한 응답\n`;
+                    status += `📡 상태 코드: ${response.status}\n`;
+                    log(`예상치 못한 응답: ${response.status}`, 'warning');
+                    statusDiv.className = 'debug-section warning';
+                }
+
+            } catch (error) {
+                status += `❌ 토큰 검증 중 오류 발생\n`;
+                status += `💥 오류: ${error.message}\n`;
+                log(`토큰 검증 오류: ${error.message}`, 'error');
+                statusDiv.className = 'debug-section error';
+            }
+
+            statusDiv.innerHTML = status;
+        }
+
+        // 4단계: 세션 생성 시뮬레이션
+        async function simulateSessionCreation() {
+            const statusDiv = document.getElementById('session-test');
+            const patientName = document.getElementById('test-patient-name').value.trim();
+            let status = '';
+
+            if (!patientName) {
+                status = '❌ 환자 이름을 입력해주세요.';
+                statusDiv.innerHTML = status;
+                statusDiv.className = 'debug-section error';
+                return;
+            }
+
+            log(`세션 생성 시뮬레이션 시작: ${patientName}`, 'info');
+
+            const token = localStorage.getItem('access_token');
+            const currentUser = localStorage.getItem('currentUser');
+
+            if (!token || !currentUser) {
+                status = '❌ 로그인 정보가 없습니다. 먼저 로그인해주세요.';
+                statusDiv.innerHTML = status;
+                statusDiv.className = 'debug-section error';
+                log('로그인 정보 없음', 'error');
+                return;
+            }
+
+            try {
+                statusDiv.innerHTML = '🔄 세션 생성 요청 중...';
+                statusDiv.className = 'debug-section info';
+
+                const userData = JSON.parse(currentUser);
+                const requestBody = {
+                    patient_name: patientName,
+                    assigned_by: userData.doctorId
+                };
+
+                log(`요청 데이터: ${JSON.stringify(requestBody)}`, 'info');
+
+                const response = await fetch(`${API_BASE}/sct/sessions`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${token}`
+                    },
+                    body: JSON.stringify(requestBody)
+                });
+
+                log(`세션 생성 응답 상태: ${response.status}`, 'info');
+
+                if (response.ok) {
+                    const sessionData = await response.json();
+                    status += `✅ 세션 생성 성공!\n`;
+                    status += `🆔 세션 ID: ${sessionData.session_id}\n`;
+                    status += `👤 환자명: ${sessionData.patient_name}\n`;
+                    status += `🔗 환자 링크: ${window.location.origin}/patient.html?session=${sessionData.session_id}\n`;
+                    
+                    log('세션 생성 성공', 'success');
+                    log(`생성된 세션 ID: ${sessionData.session_id}`, 'success');
+                    statusDiv.className = 'debug-section success';
+
+                } else {
+                    const errorText = await response.text();
+                    let errorData;
+                    try {
+                        errorData = JSON.parse(errorText);
+                    } catch (e) {
+                        errorData = { detail: errorText };
+                    }
+
+                    status += `❌ 세션 생성 실패\n`;
+                    status += `📡 상태 코드: ${response.status}\n`;
+                    status += `💥 오류 메시지: ${errorData.detail || errorText}\n`;
+                    
+                    log(`세션 생성 실패: ${response.status}`, 'error');
+                    log(`오류 내용: ${errorData.detail || errorText}`, 'error');
+                    statusDiv.className = 'debug-section error';
+                }
+
+            } catch (error) {
+                status += `❌ 네트워크 오류\n`;
+                status += `💥 오류: ${error.message}\n`;
+                log(`네트워크 오류: ${error.message}`, 'error');
+                statusDiv.className = 'debug-section error';
+            }
+
+            statusDiv.innerHTML = status;
+        }
+
+        // 페이지 로드 시 자동으로 기본 확인 실행
+        window.addEventListener('load', function() {
+            log('디버깅 도구 시작', 'info');
+            setTimeout(() => {
+                checkEnvironment();
+            }, 500);
+        });
+    </script>
+</body>
+</html>

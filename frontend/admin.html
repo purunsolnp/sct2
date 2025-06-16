@@ -326,7 +326,9 @@
                 console.error('❌ admin-create-session-form 요소를 찾을 수 없음');
             }
             // 검색 이벤트 설정
-            document.getElementById('user-search').addEventListener('input', debounce(searchUsers, 500));
+            if (document.getElementById('user-search')) {
+                document.getElementById('user-search').addEventListener('input', debounce(searchUsers, 500));
+            }
             document.getElementById('log-level-filter').addEventListener('change', refreshLogs);
         });
         
@@ -578,13 +580,17 @@
         
         // 사용자 검색
         function searchUsers() {
-            const search = document.getElementById('user-search').value;
+            let search = '';
+            const searchInput = document.getElementById('user-search');
+            if (searchInput) search = searchInput.value;
             loadUsers(1, search);
         }
         
         // 사용자 새로고침
         function refreshUsers() {
-            const search = document.getElementById('user-search').value;
+            let search = '';
+            const searchInput = document.getElementById('user-search');
+            if (searchInput) search = searchInput.value;
             loadUsers(currentUsersPage, search);
         }
         
@@ -969,19 +975,24 @@
                 if (window.userMonthlyChart) {
                     window.userMonthlyChart.destroy();
                 }
+                const maxY = Math.max(
+                    ...data.monthly_stats.map(stat => stat.total_sessions || 0),
+                    ...data.monthly_stats.map(stat => stat.completed_sessions || 0),
+                    10 // 최소 10
+                );
                 window.userMonthlyChart = new Chart(canvas.getContext('2d'), {
                     type: 'bar',
                     data: {
                         labels: data.monthly_stats.map(stat => stat.month_name),
                         datasets: [{
                             label: '총 검사 수',
-                            data: data.monthly_stats.map(stat => stat.total_sessions),
+                            data: data.monthly_stats.map(stat => stat.total_sessions || 0),
                             backgroundColor: 'rgba(66, 153, 225, 0.8)',
                             borderColor: 'rgba(66, 153, 225, 1)',
                             borderWidth: 1
                         }, {
                             label: '완료된 검사',
-                            data: data.monthly_stats.map(stat => stat.completed_sessions),
+                            data: data.monthly_stats.map(stat => stat.completed_sessions || 0),
                             backgroundColor: 'rgba(56, 161, 105, 0.8)',
                             borderColor: 'rgba(56, 161, 105, 1)',
                             borderWidth: 1
@@ -999,6 +1010,7 @@
                         scales: {
                             y: {
                                 beginAtZero: true,
+                                suggestedMax: maxY,
                                 title: {
                                     display: true,
                                     text: '검사 수'

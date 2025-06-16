@@ -234,6 +234,9 @@ class SCTResponseCreate(BaseModel):
     stem: str
     answer: str
 
+class UserStatusUpdate(BaseModel):
+    is_verified: bool
+
 # 유틸리티 함수
 def hash_password(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
@@ -879,30 +882,25 @@ async def get_all_users(
 @app.patch("/admin/users/{doctor_id}/status")
 async def toggle_user_status(
     doctor_id: str,
-    is_verified: bool,
+    status_update: UserStatusUpdate,
     db = Depends(get_db),
     current_user: str = Depends(verify_token)
 ):
     """사용자 계정 활성화/비활성화"""
     try:
         check_admin_permission(current_user)
-        
         user = db.query(User).filter(User.doctor_id == doctor_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
-        
-        user.is_verified = is_verified
+        user.is_verified = status_update.is_verified
         db.commit()
-        
-        status_text = "활성화" if is_verified else "비활성화"
+        status_text = "활성화" if status_update.is_verified else "비활성화"
         logger.info(f"✅ 사용자 계정 {status_text}: {doctor_id}")
-        
         return {
             "message": f"사용자 계정이 {status_text}되었습니다",
             "doctor_id": doctor_id,
-            "is_verified": is_verified
+            "is_verified": status_update.is_verified
         }
-        
     except HTTPException:
         raise
     except Exception as e:

@@ -1563,8 +1563,8 @@ async def generate_ai_interpretation(responses: List[SCTResponse], patient_name:
 전문적이고 객관적인 해석을 제공해주세요."""
 
         # API 호출
-        response = await openai_client.chat.completions.create(
-            model="gpt-4-turbo-preview",
+        response = openai_client.chat.completions.create(
+            model="gpt-3.5-turbo",  # 더 저렴한 모델로 변경
             messages=[
                 {"role": "system", "content": "당신은 임상심리학 전문가입니다. SCT 응답을 분석하여 전문적이고 객관적인 해석을 제공해주세요."},
                 {"role": "user", "content": prompt}
@@ -1575,7 +1575,7 @@ async def generate_ai_interpretation(responses: List[SCTResponse], patient_name:
         
         # 토큰 사용량 기록
         usage = response.usage
-        model = "gpt-4-turbo-preview"
+        model = "gpt-3.5-turbo"
         cost = calculate_gpt_cost(model, usage.prompt_tokens, usage.completion_tokens)
         
         token_usage = GPTTokenUsage(
@@ -2101,6 +2101,82 @@ async def change_password(
     db.commit()
 
     return {"message": "비밀번호가 성공적으로 변경되었습니다."}
+
+@app.post("/sct/sessions/{session_id}/regenerate")
+async def regenerate_interpretation(session_id: str, db = Depends(get_db)):
+    """해석을 재생성합니다."""
+    try:
+        logger.info(f"🔄 해석 재생성 요청: {session_id}")
+        
+        # 기존 해석 삭제
+        db.query(SCTInterpretation).filter(
+            SCTInterpretation.session_id == session_id
+        ).delete()
+        
+        # 세션 정보 가져오기
+        session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 응답 목록 조회
+        responses = db.query(SCTResponse).filter(
+            SCTResponse.session_id == session_id
+        ).order_by(SCTResponse.item_no).all()
+        
+        if not responses:
+            raise HTTPException(status_code=400, detail="응답이 없습니다")
+        
+        # 새로운 해석 생성
+        interpretation = await generate_ai_interpretation(responses, session.patient_name, session.doctor_id, session.session_id, db)
+        
+        # 해석 결과 저장
+        new_interpretation = SCTInterpretation(
+            session_id=session_id,
+            interpretation=interpretation,
+            patient_name=session.patient_name,
+            created_at=get_kst_now().replace(tzinfo=None)
+        )
+        db.add(new_interpretation)
+        db.commit()
+        
+        return {
+            "session_id": session_id,
+            "interpretation": interpretation,
+            "generated_at": get_kst_now().isoformat()
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ 해석 재생성 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"해석 재생성 중 오류: {str(e)}")
+
+@app.get("/sct/sessions/{session_id}/responses")
+async def get_session_responses(session_id: str, db = Depends(get_db)):
+    """세션의 원본 응답을 조회합니다."""
+    try:
+        session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        responses = db.query(SCTResponse).filter(
+            SCTResponse.session_id == session_id
+        ).order_by(SCTResponse.item_no).all()
+        
+        return {
+            "session_id": session_id,
+            "patient_name": session.patient_name,
+            "responses": [
+                {
+                    "item_no": r.item_no,
+                    "stem": r.stem,
+                    "answer": r.answer
+                } for r in responses
+            ],
+            "submitted_at": session.submitted_at
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ 응답 조회 실패: {e}")
+        raise HTTPException(status_code=500, detail=f"응답 조회 중 오류: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn

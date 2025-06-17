@@ -2231,6 +2231,11 @@ async def regenerate_interpretation(
                 logger.error(f"❌ 사용자를 찾을 수 없음: {current_user}")
                 raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
             
+            # admin 계정 권한 임시 설정
+            if user.doctor_id == "admin":
+                user.is_admin = True
+                logger.info(f"✅ admin 계정 권한 임시 설정: {current_user}")
+            
             if not user.is_active:
                 logger.error(f"❌ 비활성화된 계정: {current_user}")
                 raise HTTPException(status_code=403, detail="비활성화된 계정입니다")

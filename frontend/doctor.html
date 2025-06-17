@@ -741,6 +741,38 @@
         .header-button .icon {
             font-size: 16px;
         }
+
+        /* 토스트 스타일 추가 */
+        .toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 12px 24px;
+            border-radius: 4px;
+            color: white;
+            font-weight: 500;
+            z-index: 1000;
+            animation: slideIn 0.3s ease-out;
+        }
+        
+        .toast.success {
+            background-color: #4CAF50;
+        }
+        
+        .toast.error {
+            background-color: #f44336;
+        }
+        
+        @keyframes slideIn {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
     </style>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
@@ -1532,20 +1564,30 @@
                 });
 
                 if (!response.ok) {
-                    throw new Error('해석 재생성에 실패했습니다.');
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '해석 재생성에 실패했습니다.');
                 }
 
                 const data = await response.json();
-                currentInterpretation = data.interpretation;
+                
+                // 성공 메시지 표시
+                showToast('success', data.message || '해석이 성공적으로 재생성되었습니다.');
                 
                 // 해석 내용 업데이트
-                renderInterpretationWithTitle(data.interpretation);
+                const interpretationElement = document.getElementById('interpretation-content');
+                if (interpretationElement) {
+                    interpretationElement.innerHTML = marked.parse(data.interpretation);
+                }
                 
-                showSuccess('해석이 재생성되었습니다.');
+                // 해석 시간 업데이트
+                const timeElement = document.getElementById('interpretation-time');
+                if (timeElement) {
+                    timeElement.textContent = new Date(data.generated_at).toLocaleString();
+                }
                 
             } catch (error) {
                 console.error('해석 재생성 오류:', error);
-                showError('해석 재생성 중 오류가 발생했습니다.');
+                showToast('error', error.message || '해석 재생성 중 오류가 발생했습니다.');
             } finally {
                 hideLoading();
             }
@@ -1841,6 +1883,26 @@
             if (event.target.className === 'modal') {
                 event.target.style.display = 'none';
             }
+        }
+
+        // 토스트 메시지 표시 함수
+        function showToast(type, message) {
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            
+            // 기존 토스트 제거
+            const existingToast = document.querySelector('.toast');
+            if (existingToast) {
+                existingToast.remove();
+            }
+            
+            document.body.appendChild(toast);
+            
+            // 3초 후 자동 제거
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
         }
     </script>
 </body>

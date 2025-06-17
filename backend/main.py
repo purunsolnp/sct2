@@ -2189,58 +2189,137 @@ async def change_password(
     return {"message": "비밀번호가 성공적으로 변경되었습니다."}
 
 @app.post("/sct/sessions/{session_id}/regenerate")
-async def regenerate_interpretation(session_id: str, db = Depends(get_db), current_user: str = Depends(get_current_user)):
+async def regenerate_interpretation(
+    session_id: str, 
+    db = Depends(get_db), 
+    current_user: str = Depends(get_current_user)
+):
     """해석을 재생성합니다."""
     try:
-        logger.info(f"🔄 해석 재생성 요청: {session_id}")
+        logger.info(f"🔄 해석 재생성 요청: session_id={session_id}, user={current_user}")
         
-        # 통합된 권한 확인
-        check_user_permission(current_user, db)
+        # 사용자 권한 확인 - 더 안전한 방식
+        try:
+            user = db.query(User).filter(User.doctor_id == current_user).first()
+            if not user:
+                logger.error(f"❌ 사용자를 찾을 수 없음: {current_user}")
+                raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+            
+            if not user.is_active:
+                logger.error(f"❌ 비활성화된 계정: {current_user}")
+                raise HTTPException(status_code=403, detail="비활성화된 계정입니다")
+            
+            if not user.is_verified:
+                logger.error(f"❌ 미승인 계정: {current_user}")
+                raise HTTPException(status_code=403, detail="승인되지 않은 계정입니다")
+                
+        except Exception as e:
+            logger.error(f"❌ 사용자 권한 확인 실패: {e}")
+            raise HTTPException(status_code=403, detail="사용자 권한 확인에 실패했습니다")
         
-        # 세션 정보 가져오기
+        # 세션 정보 확인
         session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
         if not session:
+            logger.error(f"❌ 세션을 찾을 수 없음: {session_id}")
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
         
         # 세션 소유권 확인
         if session.doctor_id != current_user:
+            logger.error(f"❌ 권한 없는 접근: session_owner={session.doctor_id}, requester={current_user}")
             raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다")
         
-        # 기존 해석 삭제
-        db.query(SCTInterpretation).filter(
-            SCTInterpretation.session_id == session_id
-        ).delete()
+        if session.status != "complete":
+            logger.error(f"❌ 완료되지 않은 세션: {session_id}, status={session.status}")
+            raise HTTPException(status_code=400, detail="완료된 검사만 해석이 가능합니다")
         
-        # 응답 목록 조회
+        # 응답 데이터 확인
         responses = db.query(SCTResponse).filter(
             SCTResponse.session_id == session_id
         ).order_by(SCTResponse.item_no).all()
         
         if not responses:
-            raise HTTPException(status_code=400, detail="응답이 없습니다")
+            logger.error(f"❌ 응답이 없음: {session_id}")
+            raise HTTPException(status_code=400, detail="응답 데이터가 없습니다")
+        
+        logger.info(f"📊 응답 데이터 확인됨: {len(responses)}개 응답")
+        
+        # 기존 해석 삭제 (더 안전한 방식)
+        try:
+            existing_interpretation = db.query(SCTInterpretation).filter(
+                SCTInterpretation.session_id == session_id
+            ).first()
+            
+            if existing_interpretation:
+                logger.info(f"🗑️ 기존 해석 삭제: {session_id}")
+                db.delete(existing_interpretation)
+                db.flush()  # commit 대신 flush 사용
+                
+        except Exception as e:
+            logger.error(f"❌ 기존 해석 삭제 실패: {e}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail="기존 해석 삭제에 실패했습니다")
         
         # 새로운 해석 생성
-        interpretation = await generate_ai_interpretation(responses, session.patient_name, session.doctor_id, session.session_id, db)
+        try:
+            logger.info(f"🧠 AI 해석 생성 시작: {session_id}")
+            interpretation = await generate_ai_interpretation(
+                responses, 
+                session.patient_name, 
+                session.doctor_id, 
+                session.session_id, 
+                db
+            )
+            
+            if not interpretation or len(interpretation.strip()) < 100:
+                logger.error(f"❌ 해석 생성 실패 또는 너무 짧음: {len(interpretation) if interpretation else 0}자")
+                raise Exception("해석 생성에 실패했거나 결과가 부적절합니다")
+                
+            logger.info(f"✅ AI 해석 생성 완료: {len(interpretation)}자")
+            
+        except Exception as e:
+            logger.error(f"❌ AI 해석 생성 실패: {e}")
+            db.rollback()
+            # OpenAI 실패 시 기본 해석 사용
+            interpretation = generate_default_interpretation(responses, session.patient_name)
+            logger.info("⚠️ 기본 해석으로 대체됨")
         
-        # 해석 결과 저장
-        new_interpretation = SCTInterpretation(
-            session_id=session_id,
-            interpretation=interpretation,
-            patient_name=session.patient_name,
-            created_at=get_kst_now().replace(tzinfo=None)
-        )
-        db.add(new_interpretation)
-        db.commit()
+        # 새로운 해석 저장
+        try:
+            new_interpretation = SCTInterpretation(
+                session_id=session_id,
+                interpretation=interpretation,
+                patient_name=session.patient_name,
+                created_at=get_kst_now().replace(tzinfo=None)
+            )
+            
+            db.add(new_interpretation)
+            db.commit()
+            logger.info(f"✅ 새로운 해석 저장 완료: {session_id}")
+            
+        except Exception as e:
+            logger.error(f"❌ 해석 저장 실패: {e}")
+            db.rollback()
+            raise HTTPException(status_code=500, detail="해석 저장에 실패했습니다")
         
         return {
             "session_id": session_id,
             "interpretation": interpretation,
-            "generated_at": get_kst_now().isoformat()
+            "generated_at": get_kst_now().isoformat(),
+            "patient_name": session.patient_name,
+            "message": "해석이 성공적으로 재생성되었습니다"
         }
         
+    except HTTPException:
+        # HTTPException은 그대로 전달
+        raise
     except Exception as e:
-        logger.error(f"❌ 해석 재생성 실패: {e}")
-        raise HTTPException(status_code=500, detail=f"해석 재생성 중 오류: {str(e)}")
+        logger.error(f"❌ 해석 재생성 중 예상치 못한 오류: {e}")
+        logger.error(f"❌ 오류 상세: {type(e).__name__}: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500, 
+            detail=f"해석 재생성 중 서버 오류가 발생했습니다: {str(e)}"
+        )
 
 @app.get("/sct/sessions/{session_id}/responses")
 async def get_session_responses(session_id: str, db = Depends(get_db)):

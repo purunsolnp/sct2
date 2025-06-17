@@ -340,7 +340,7 @@
             try {
                 console.log('로그인 시도:', doctorId);
                 
-                const response = await fetch(`${API_BASE}/auth/login`, {
+                const response = await fetch(`${API_BASE}/login`, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json' 

@@ -912,14 +912,14 @@
                         <span class="icon">📝</span> 원본 응답
                     </button>
                     <button onclick="closeModal('interpretation-modal')" class="close-button">×</button>
-                </div>
             </div>
+                </div>
             <div class="modal-body">
                 <div id="interpretation-content" class="interpretation-content"></div>
             </div>
-        </div>
-    </div>
-
+                </div>
+            </div>
+            
     <!-- 원본 응답 모달 -->
     <div id="responses-modal" class="modal">
         <div class="modal-content">
@@ -1562,12 +1562,12 @@
                     method: 'POST',
                     headers: getApiHeaders()
                 });
-
+                
                 if (!response.ok) {
                     const errorData = await response.json();
                     throw new Error(errorData.detail || '해석 재생성에 실패했습니다.');
                 }
-
+                
                 const data = await response.json();
                 
                 // 성공 메시지 표시
@@ -1604,20 +1604,20 @@
                 const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/responses`, {
                     headers: getApiHeaders()
                 });
-
+                
                 if (!response.ok) {
                     throw new Error('응답 조회에 실패했습니다.');
                 }
-
+                
                 const data = await response.json();
                 
                 // 응답 내용 구성
                 const responsesHtml = data.responses.map(r => `
-                    <div class="response-item">
+                            <div class="response-item">
                         <div class="item-number">문항 ${r.item_no}</div>
                         <div class="stem">${r.stem}</div>
                         <div class="answer">${r.answer}</div>
-                    </div>
+                            </div>
                 `).join('');
                 
                 document.getElementById('responses-content').innerHTML = responsesHtml;
@@ -1648,7 +1648,7 @@
                 showError('다운로드할 해석 결과가 없습니다.');
                 return;
             }
-
+            
             try {
                 showLoading('PDF를 생성하는 중입니다...');
                 
@@ -1839,7 +1839,7 @@
                     <head>
                         <title>SCT 원본 응답</title>
                         <style>
-                            body {
+                    body {
                                 font-family: Arial, sans-serif;
                                 line-height: 1.6;
                                 padding: 20px;
@@ -1861,13 +1861,13 @@
                             p {
                                 margin: 0;
                                 color: #666;
-                            }
-                        </style>
-                    </head>
-                    <body>
+                }
+            </style>
+        </head>
+        <body>
                         ${content}
-                    </body>
-                </html>
+        </body>
+        </html>
             `);
             
             printWindow.document.close();

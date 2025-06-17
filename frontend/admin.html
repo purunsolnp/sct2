@@ -4,6 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SCT 관리자 페이지</title>
+    <!-- Toastify CSS -->
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
+    <!-- Toastify JS -->
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         body {
@@ -1177,27 +1181,31 @@
             try {
                 const response = await fetch(`${API_BASE}/admin/users/${doctorId}/status`, {
                     method: 'PATCH',
-                    headers: getApiHeaders(),
-                    body: JSON.stringify({ is_verified: isVerified })
+                    headers: {
+                        ...getApiHeaders(),
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        is_verified: isVerified,
+                        is_active: isVerified
+                    })
                 });
+
                 if (!response.ok) {
-                    throw new Error('사용자 상태 변경 실패');
+                    throw new Error('상태 변경 실패');
                 }
+
                 const result = await response.json();
-                alert(result.message);
-                // 목록 새로고침 (예외 처리)
-                try {
-                    refreshUsers();
-                } catch (e) {
-                    console.error('목록 새로고침 오류:', e);
-                }
+                showAlert(result.message, 'success');
+                
+                // 사용자 목록 새로고침
+                loadUsers();
+                
             } catch (error) {
-                console.error('사용자 상태 변경 오류:', error);
-                alert('상태 변경 중 오류가 발생했습니다.');
-                // 체크박스 원래 상태로 복원
-                try {
-                    refreshUsers();
-                } catch (e) {}
+                console.error('상태 변경 오류:', error);
+                showAlert('상태 변경 중 오류가 발생했습니다.', 'error');
+                // 체크박스 상태 복원을 위해 목록 새로고침
+                loadUsers();
             }
         }
         
@@ -1945,6 +1953,21 @@
         
         function showToast(message, type = 'info') {
             console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        // 알림 메시지 표시 함수
+        function showAlert(message, type = 'info') {
+            // Toastify 라이브러리 사용
+            Toastify({
+                text: message,
+                duration: 3000,
+                gravity: "top",
+                position: "center",
+                backgroundColor: type === 'success' ? "#4CAF50" : 
+                                type === 'error' ? "#F44336" : 
+                                type === 'warning' ? "#FF9800" : "#2196F3",
+                stopOnFocus: true
+            }).showToast();
         }
     </script>
 </body>

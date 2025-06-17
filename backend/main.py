@@ -17,6 +17,9 @@ import uuid
 import logging
 import pytz
 
+# Import database configuration
+from database_config import engine, SessionLocal, Base, get_db, create_tables, check_database_health
+
 SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key")
 ALGORITHM = "HS256"
 security = HTTPBearer()
@@ -162,15 +165,17 @@ else:
 
 # FastAPI 앱 초기화
 app = FastAPI(
-    title="SCT 검사 시스템 API", 
-    version="2.1.0",
-    description="문장완성검사(SCT) 자동화 시스템 - 확장 기능 포함"
+    title="SCT API",
+    description="SCT 검사 시스템을 위한 API",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 운영환경에서는 특정 도메인만 허용
+    allow_origins=["http://localhost:5500", "http://127.0.0.1:5500", "https://purunsolsct.netlify.app"],  # 프론트엔드 서버 주소
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -310,6 +315,7 @@ class SCTResponseCreate(BaseModel):
 
 class UserStatusUpdate(BaseModel):
     is_verified: bool
+    is_active: bool = None  # 선택적 필드로 변경
 
 # 유틸리티 함수
 def hash_password(password: str) -> str:
@@ -349,223 +355,9 @@ def check_admin_permission(current_user: str, db: Session):
     # 특정 사용자들을 관리자로 지정 (임시)
     admin_users = ["admin", "doctor1", "purunsolnp"]  # purunsolnp 추가
     if current_user not in admin_users and not getattr(user, 'is_admin', False):
-        raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
+        raise HTTPException(status_code=403, detail="관리자 권한이 없습니다. 관리자에게 문의하세요.")
     
     return user
-
-# SCT 검사 문항 (50개)
-SCT_ITEMS = [
-    "나에게 이상한 일이 생겼을 때",
-    "내 생각에 가끔 아버지는",
-    "우리 윗사람들은",
-    "나의 장래는",
-    "어리석게도 내가 두려워하는 것은",
-    "내 생각에 참다운 친구는",
-    "내가 어렸을 때는",
-    "남자에 대해서 무엇보다 좋지 않게 생각하는 것은",
-    "내가 바라는 여인상(女人像)은",
-    "남녀가 같이 있는 것을 볼 때",
-    "내가 늘 원하는 것은",
-    "다른 가정과 비교해서 우리 집안은",
-    "나의 어머니는",
-    "무슨 일을 해서라도 잊고 싶은 것은",
-    "내가 믿고 있는 내 능력은",
-    "내가 정말 행복할 수 있으려면",
-    "어렸을 때 잘못했다고 느끼는 것은",
-    "내가 보는 나의 앞날은",
-    "대개 아버지들이란",
-    "내 생각에 남자들이란",
-    "다른 친구들이 모르는 나만의 두려움은",
-    "내가 싫어하는 사람은",
-    "결혼 생활에 대한 나의 생각은",
-    "우리 가족이 나에 대해서",
-    "내 생각에 여자들이란",
-    "어머니와 나는",
-    "내가 저지른 가장 큰 잘못은",
-    "언젠가 나는",
-    "내가 바라기에 아버지는",
-    "나의 야망은",
-    "윗사람이 오는 것을 보면 나는",
-    "내가 제일 좋아하는 사람은",
-    "내가 다시 젊어진다면",
-    "나의 가장 큰 결점은",
-    "내가 아는 대부분의 집안은",
-    "완전한 남성상(男性像)은",
-    "내가 성교를 했다면",
-    "행운이 나를 외면했을 때",
-    "대개 어머니들이란",
-    "내가 잊고 싶은 두려움은",
-    "내가 평생 가장 하고 싶은 일은",
-    "내가 늙으면",
-    "때때로 두려운 생각이 나를 휩쌀 때",
-    "내가 없을 때 친구들은",
-    "생생한 어린 시절의 기억은",
-    "무엇보다도 좋지 않게 여기는 것은",
-    "나의 성 생활은",
-    "내가 어렸을 때 우리 가족은",
-    "나는 어머니를 좋아했지만",
-    "아버지와 나는"
-]
-
-# 문항별 해석 가이드 상수
-SCT_ITEM_CATEGORIES = {
-    "가족관계": [2, 13, 19, 26, 29, 39, 48, 49, 50],
-    "대인관계": [6, 22, 32, 44],
-    "자아개념": [15, 34, 30],
-    "정서조절": [5, 21, 40, 43],
-    "성_결혼관": [8, 9, 10, 23, 25, 36, 37, 47],
-    "미래전망": [4, 16, 18, 28, 41, 42],
-    "과거경험": [7, 17, 33, 45],
-    "현실적응": [1, 3, 11, 31, 38, 46],
-    "성격특성": [12, 14, 20, 24, 27, 35],
-}
-
-# GPT 모델별 토큰 비용 (USD per 1K tokens)
-GPT_MODEL_COSTS = {
-    "gpt-4": {
-        "prompt": 0.03,
-        "completion": 0.06
-    },
-    "gpt-3.5-turbo": {
-        "prompt": 0.0015,
-        "completion": 0.002
-    },
-    "gpt-4-turbo-preview": {
-        "prompt": 0.01,
-        "completion": 0.03
-    }
-}
-
-def calculate_gpt_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
-    """GPT 모델 사용 비용을 계산합니다."""
-    if model not in GPT_MODEL_COSTS:
-        return 0.0
-    
-    costs = GPT_MODEL_COSTS[model]
-    prompt_cost = (prompt_tokens / 1000) * costs["prompt"]
-    completion_cost = (completion_tokens / 1000) * costs["completion"]
-    
-    return round(prompt_cost + completion_cost, 6)
-
-# 애플리케이션 시작 시 테이블 생성
-@app.on_event("startup")
-async def startup_event():
-    logger.info("🚀 애플리케이션 시작")
-    create_tables()
-    
-    # 데이터베이스 연결 확인
-    health = check_database_health()
-    if health["status"] == "healthy":
-        logger.info("✅ 데이터베이스 연결 확인됨")
-    else:
-        logger.warning(f"⚠️ 데이터베이스 연결 문제: {health}")
-
-# API 엔드포인트
-@app.get("/")
-async def root():
-    return {
-        "message": "SCT 검사 시스템 API v2.1", 
-        "status": "running",
-        "database": check_database_health()["status"]
-    }
-
-@app.get("/health")
-async def health_check():
-    return {
-        "status": "healthy",
-        "timestamp": get_kst_now(),
-        "database": check_database_health(),
-        "openai": "available" if openai_client else "unavailable"
-    }
-
-@app.post("/auth/register")
-async def register(user: UserCreate, db = Depends(get_db)):
-    try:
-        logger.info(f"🏥 회원가입 시도: {user.doctor_id}")
-        
-        # Validate password
-        if not validate_password(user.password):
-            raise HTTPException(
-                status_code=400,
-                detail="비밀번호는 8자 이상이며, 대문자, 소문자, 숫자, 특수문자를 포함해야 합니다."
-            )
-        
-        # Check if user exists
-        existing_user = db.query(User).filter(User.doctor_id == user.doctor_id).first()
-        if existing_user:
-            raise HTTPException(status_code=400, detail="이미 존재하는 의사 ID입니다.")
-        
-        # Create new user
-        hashed_password = hash_password(user.password)
-        new_user = User(
-            doctor_id=user.doctor_id,
-            email=user.email,
-            hashed_password=hashed_password,
-            first_name=user.first_name,
-            last_name=user.last_name,
-            specialty=user.specialty,
-            hospital=user.hospital,
-            phone=user.phone,
-            medical_license=user.medical_license,
-            password_history=[hashed_password],
-            last_password_change=datetime.utcnow()
-        )
-        
-        db.add(new_user)
-        db.commit()
-        db.refresh(new_user)
-        
-        logger.info(f"✅ 새 사용자 등록: {user.doctor_id}")
-        return {"message": "회원가입이 완료되었습니다"}
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"❌ 회원가입 오류: {e}")
-        db.rollback()
-        raise HTTPException(status_code=500, detail="회원가입 중 오류가 발생했습니다")
-
-@app.post("/auth/login")
-async def login(user_login: UserLogin, db = Depends(get_db)):
-    try:
-        user = db.query(User).filter(User.doctor_id == user_login.doctor_id).first()
-        
-        if not user or not verify_password(user_login.password, user.hashed_password):
-            raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 올바르지 않습니다")
-        
-        if not user.is_active:
-            raise HTTPException(status_code=403, detail="비활성화된 계정입니다")
-        
-        # 로그인 성공 시 토큰 생성
-        logger.info(f"🔑 토큰 생성 대상 사용자: {user.doctor_id}")
-        access_token = create_access_token(data={"sub": user.doctor_id})
-        
-        # 마지막 로그인 시간 업데이트
-        user.last_login = datetime.utcnow()
-        db.commit()
-        
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user_info": {
-                "doctorId": user.doctor_id,
-                "name": f"{user.last_name}{user.first_name}",
-                "email": user.email,
-                "isAdmin": user.is_admin  # 관리자 여부 추가
-            }
-        }
-    except Exception as e:
-        logger.error(f"Login error: {str(e)}")
-        raise HTTPException(status_code=500, detail="로그인 중 오류가 발생했습니다.")
-
-@app.get("/auth/check-id/{doctor_id}")
-async def check_doctor_id(doctor_id: str, db = Depends(get_db)):
-    try:
-        user = db.query(User).filter(User.doctor_id == doctor_id).first()
-        return {"available": user is None}
-    except Exception as e:
-        logger.error(f"❌ ID 확인 오류: {e}")
-        raise HTTPException(status_code=500, detail="ID 확인 중 오류가 발생했습니다")
 
 def check_user_permission(current_user: str, db: Session, action: str = "access"):
     """사용자 권한을 확인하는 통합 함수"""
@@ -1032,14 +824,19 @@ async def toggle_user_status(
         user = db.query(User).filter(User.doctor_id == doctor_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+        
+        # is_verified와 is_active 모두 업데이트
         user.is_verified = status_update.is_verified
+        user.is_active = status_update.is_verified  # 인증 상태와 동일하게 설정
+        
         db.commit()
         status_text = "활성화" if status_update.is_verified else "비활성화"
         logger.info(f"✅ 사용자 계정 {status_text}: {doctor_id}")
         return {
             "message": f"사용자 계정이 {status_text}되었습니다",
             "doctor_id": doctor_id,
-            "is_verified": status_update.is_verified
+            "is_verified": status_update.is_verified,
+            "is_active": user.is_active
         }
     except HTTPException:
         raise

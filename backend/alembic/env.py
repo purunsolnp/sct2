@@ -11,7 +11,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 # Import the Base and models from main.py
-from backend.main import Base
+from main import Base
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -71,8 +71,7 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection,
-            target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata
         )
 
         with context.begin_transaction():

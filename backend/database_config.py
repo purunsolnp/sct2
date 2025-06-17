@@ -7,11 +7,15 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import QueuePool
 import ssl
 import logging
+from dotenv import load_dotenv
+
+# Load environment variables from .env file if it exists
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
 # 환경 변수에서 데이터베이스 URL 가져오기
-DATABASE_URL = os.getenv("DATABASE_URL")
+DATABASE_URL = "postgresql://sct_database_user:K0ICxQxIOX0xEFweVU68ltRQPHeF3g7A@dpg-d1592p7fte5s738ujc40-a.singapore-postgres.render.com/sct_database"
 
 # Render에서 제공하는 기본 PostgreSQL URL 형식 처리
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
@@ -20,7 +24,7 @@ if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
 # SSL 설정 및 연결 풀 설정
 def create_database_engine():
     if not DATABASE_URL:
-        logger.info("⚠️ DATABASE_URL이 설정되지 않았습니다. SQLite로 폴백합니다.")
+        logger.warning("⚠️ DATABASE_URL이 설정되지 않았습니다. SQLite로 폴백합니다.")
         # SQLite 폴백 (개발용)
         return create_engine(
             "sqlite:///./sct_app.db",
@@ -35,6 +39,7 @@ def create_database_engine():
     }
     
     try:
+        logger.info("🔄 PostgreSQL 데이터베이스 연결 시도...")
         engine = create_engine(
             DATABASE_URL,
             poolclass=QueuePool,
@@ -55,7 +60,7 @@ def create_database_engine():
         
     except Exception as e:
         logger.error(f"❌ PostgreSQL 연결 실패: {e}")
-        logger.info("⚠️ SQLite로 폴백합니다.")
+        logger.warning("⚠️ SQLite로 폴백합니다.")
         
         # SQLite 폴백
         return create_engine(

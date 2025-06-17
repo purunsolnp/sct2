@@ -2250,9 +2250,13 @@ async def regenerate_interpretation(
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
         
         # 세션 소유권 확인 (관리자는 모든 세션에 접근 가능)
-        if session.doctor_id != current_user and not user.is_admin:
-            logger.error(f"❌ 권한 없는 접근: session_owner={session.doctor_id}, requester={current_user}")
-            raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다")
+        if session.doctor_id != current_user:
+            # 관리자 권한 확인
+            if not user.is_admin:
+                logger.error(f"❌ 권한 없는 접근: session_owner={session.doctor_id}, requester={current_user}")
+                raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다")
+            else:
+                logger.info(f"✅ 관리자 권한으로 접근: {current_user}")
         
         if session.status != "complete":
             logger.error(f"❌ 완료되지 않은 세션: {session_id}, status={session.status}")

@@ -1614,10 +1614,6 @@ async def generate_ai_interpretation(responses: List[SCTResponse], patient_name:
 다음의 보고서 구조를 반드시 따르세요:
 
 
-**0. 보고서 정보**  
-- 이름: {patient_name}  
-
-
 **1. 검사 개요**  
 {patient_name}님, 검사일, 검사 협조도, 응답의 전반적 특성, 응답 스타일, 검사 신뢰도 등을 요약해 주세요. 정서의 깊이, 문장 구조의 성실성, 회피나 과장 여부 등도 평가해 주세요.
 

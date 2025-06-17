@@ -15,7 +15,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # 환경 변수에서 데이터베이스 URL 가져오기
-DATABASE_URL = "postgresql://sct_database_user:K0ICxQxIOX0xEFweVU68ltRQPHeF3g7A@dpg-d1592p7fte5s738ujc40-a.singapore-postgres.render.com/sct_database"
+DATABASE_URL = "postgresql://sct_database_user:Ab/8520/8520@dpg-d1592p7fte5s738ujc40-a.singapore-postgres.render.com/sct_database"
 
 # Render에서 제공하는 기본 PostgreSQL URL 형식 처리
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):

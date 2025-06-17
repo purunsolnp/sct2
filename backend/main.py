@@ -195,9 +195,10 @@ class User(Base):
     medical_license = Column(String, nullable=True)
     is_verified = Column(Boolean, default=False)
     is_active = Column(Boolean, default=True)
+    is_admin = Column(Boolean, default=False)  # 관리자 권한 필드 추가
     created_at = Column(DateTime, default=datetime.utcnow)
     last_password_change = Column(DateTime, default=datetime.utcnow)
-    password_history = Column(JSON, default=list)  # Store last 5 passwords
+    password_history = Column(JSON, default=list)
     login_attempts = Column(Integer, default=0)
     last_login_attempt = Column(DateTime)
     last_login = Column(DateTime)
@@ -339,11 +340,18 @@ def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)):
         raise HTTPException(status_code=401, detail="Invalid token")
 
 # 관리자 권한 확인 함수
-def check_admin_permission(current_user: str):
-    """관리자 권한 확인"""
-    admin_users = ["admin", "doctor1"]  # 임시 관리자 계정들
-    if current_user not in admin_users:
+def check_admin_permission(current_user: str, db: Session):
+    """관리자 권한 확인 - 데이터베이스 기반"""
+    user = db.query(User).filter(User.doctor_id == current_user).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+    
+    # 특정 사용자들을 관리자로 지정 (임시)
+    admin_users = ["admin", "doctor1", "purunsolnp"]  # purunsolnp 추가
+    if current_user not in admin_users and not getattr(user, 'is_admin', False):
         raise HTTPException(status_code=403, detail="관리자 권한이 필요합니다")
+    
+    return user
 
 # SCT 검사 문항 (50개)
 SCT_ITEMS = [
@@ -521,13 +529,31 @@ async def register(user: UserCreate, db = Depends(get_db)):
 async def login(user_login: UserLogin, db = Depends(get_db)):
     try:
         user = db.query(User).filter(User.doctor_id == user_login.doctor_id).first()
-        # 기존 로그인 검증 로직 유지
+        
         if not user or not verify_password(user_login.password, user.hashed_password):
-            # 기존 실패 처리
-            raise HTTPException(status_code=401, detail="잘못된 ID 또는 비밀번호입니다")
-        # 기존 로그인 성공 처리
+            raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 올바르지 않습니다")
+        
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="비활성화된 계정입니다")
+        
+        # 로그인 성공 시 토큰 생성
+        logger.info(f"🔑 토큰 생성 대상 사용자: {user.doctor_id}")
         access_token = create_access_token(data={"sub": user.doctor_id})
-        return {"access_token": access_token, "token_type": "bearer"}
+        
+        # 마지막 로그인 시간 업데이트
+        user.last_login = datetime.utcnow()
+        db.commit()
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user_info": {
+                "doctorId": user.doctor_id,
+                "name": f"{user.last_name}{user.first_name}",
+                "email": user.email,
+                "isAdmin": user.is_admin  # 관리자 여부 추가
+            }
+        }
     except Exception as e:
         logger.error(f"Login error: {str(e)}")
         raise HTTPException(status_code=500, detail="로그인 중 오류가 발생했습니다.")
@@ -834,7 +860,7 @@ async def get_admin_dashboard_stats(
 ):
     """관리자 대시보드 통계 정보"""
     try:
-        check_admin_permission(current_user)
+        check_admin_permission(current_user, db)
         
         # 전체 사용자 수
         total_users = db.query(User).count()
@@ -897,7 +923,7 @@ async def get_all_users(
 ):
     """전체 사용자 목록 조회 (관리자용)"""
     try:
-        check_admin_permission(current_user)
+        check_admin_permission(current_user, db)
         
         # 기본 쿼리
         query = db.query(User)
@@ -1002,7 +1028,7 @@ async def toggle_user_status(
 ):
     """사용자 계정 활성화/비활성화"""
     try:
-        check_admin_permission(current_user)
+        check_admin_permission(current_user, db)
         user = db.query(User).filter(User.doctor_id == doctor_id).first()
         if not user:
             raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
@@ -1031,7 +1057,7 @@ async def get_usage_statistics(
 ):
     """월별 사용 통계"""
     try:
-        check_admin_permission(current_user)
+        check_admin_permission(current_user, db)
         
         now = get_kst_now()
         stats = []
@@ -1113,7 +1139,7 @@ async def get_system_logs(
 ):
     """시스템 로그 조회 (기본적인 세션 로그)"""
     try:
-        check_admin_permission(current_user)
+        check_admin_permission(current_user, db)
         
         # 최근 세션 활동을 로그로 표시
         query = db.query(SCTSession).order_by(SCTSession.created_at.desc())
@@ -1188,7 +1214,7 @@ async def admin_cleanup_database(
 ):
     """데이터베이스 정리 (관리자용)"""
     try:
-        check_admin_permission(current_user)
+        check_admin_permission(current_user, db)
         
         logger.info(f"🧹 데이터베이스 정리 {'시뮬레이션' if dry_run else '실행'}: {days_old}일 이전 데이터")
         
@@ -1730,7 +1756,7 @@ async def get_gpt_usage(
 ):
     """GPT 토큰 사용량과 비용을 조회합니다."""
     try:
-        check_admin_permission(current_user)
+        check_admin_permission(current_user, db)
         
         # 기본 쿼리
         query = db.query(GPTTokenUsage)
@@ -2223,8 +2249,8 @@ async def regenerate_interpretation(
             logger.error(f"❌ 세션을 찾을 수 없음: {session_id}")
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
         
-        # 세션 소유권 확인
-        if session.doctor_id != current_user:
+        # 세션 소유권 확인 (관리자는 모든 세션에 접근 가능)
+        if session.doctor_id != current_user and not user.is_admin:
             logger.error(f"❌ 권한 없는 접근: session_owner={session.doctor_id}, requester={current_user}")
             raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다")
         

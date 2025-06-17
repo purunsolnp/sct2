@@ -360,18 +360,12 @@ def check_admin_permission(current_user: str, db: Session):
     return user
 
 def check_user_permission(current_user: str, db: Session, action: str = "access"):
-    """사용자 권한을 확인하는 통합 함수"""
+    """사용자 권한을 확인하는 통합 함수 (is_active 체크 제거)"""
     user = db.query(User).filter(User.doctor_id == current_user).first()
-    
     if not user:
         raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
-    
-    if not user.is_active:
-        raise HTTPException(status_code=403, detail="비활성화된 계정입니다. 관리자에게 문의하세요.")
-    
     if not user.is_verified:
         raise HTTPException(status_code=403, detail="승인되지 않은 계정입니다. 관리자의 승인을 기다려주세요.")
-    
     return user
 
 @app.post("/sct/sessions")
@@ -382,6 +376,9 @@ async def create_session(
 ):
     try:
         logger.info(f"🏗️ 새 세션 생성 요청: patient={session_data.patient_name}, doctor={current_user}")
+        user = check_user_permission(current_user, db)
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="권한이 제한되었습니다. 관리자에게 연락해주세요.")
         
         # 통합된 권한 확인
         check_user_permission(current_user, db)
@@ -1289,13 +1286,9 @@ async def generate_interpretation_endpoint(session_id: str, db = Depends(get_db)
     """SCT 해석을 생성합니다."""
     try:
         logger.info(f"🧠 해석 생성 요청: {session_id}")
-        
-        # 통합된 권한 확인
-        check_user_permission(current_user, db)
-        
-        session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
-        if not session:
-            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        user = check_user_permission(current_user, db)
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="권한이 제한되었습니다. 관리자에게 연락해주세요.")
         
         # 세션 소유권 확인
         if session.doctor_id != current_user:
@@ -2015,30 +2008,16 @@ async def regenerate_interpretation(
     """해석을 재생성합니다."""
     try:
         logger.info(f"🔄 해석 재생성 요청: session_id={session_id}, user={current_user}")
-        
-        # 사용자 권한 확인 - 더 안전한 방식
-        try:
-            user = db.query(User).filter(User.doctor_id == current_user).first()
-            if not user:
-                logger.error(f"❌ 사용자를 찾을 수 없음: {current_user}")
-                raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
-            
-            # admin 계정 권한 임시 설정
-            if user.doctor_id == "admin":
-                user.is_admin = True
-                logger.info(f"✅ admin 계정 권한 임시 설정: {current_user}")
-            
-            if not user.is_active:
-                logger.error(f"❌ 비활성화된 계정: {current_user}")
-                raise HTTPException(status_code=403, detail="비활성화된 계정입니다")
-            
-            if not user.is_verified:
-                logger.error(f"❌ 미승인 계정: {current_user}")
-                raise HTTPException(status_code=403, detail="승인되지 않은 계정입니다")
-                
-        except Exception as e:
-            logger.error(f"❌ 사용자 권한 확인 실패: {e}")
-            raise HTTPException(status_code=403, detail="사용자 권한 확인에 실패했습니다")
+        user = db.query(User).filter(User.doctor_id == current_user).first()
+        if not user:
+            logger.error(f"❌ 사용자를 찾을 수 없음: {current_user}")
+            raise HTTPException(status_code=404, detail="사용자를 찾을 수 없습니다")
+        if not user.is_active:
+            logger.error(f"❌ 비활성화된 계정: {current_user}")
+            raise HTTPException(status_code=403, detail="권한이 제한되었습니다. 관리자에게 연락해주세요.")
+        if not user.is_verified:
+            logger.error(f"❌ 미승인 계정: {current_user}")
+            raise HTTPException(status_code=403, detail="승인되지 않은 계정입니다. 관리자의 승인을 기다려주세요.")
         
         # 세션 정보 확인
         session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()

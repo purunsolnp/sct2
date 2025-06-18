@@ -39,7 +39,7 @@ def get_sct_items():
         })
     return {"items": items, "total_count": len(SCT_ITEMS)}
 
-@router.post("/sct/sessions")
+@router.post("/sct/sessions", response_model=SessionRead)
 def create_session(
     session: SessionCreate,
     db: Session = Depends(get_db),
@@ -59,17 +59,7 @@ def create_session(
         "expires_at": db_session.expires_at
     })
     
-    # 응답 데이터
-    response_data = {
-        "session_id": db_session.session_id,
-        "patient_name": db_session.patient_name,
-        "doctor_id": db_session.doctor_id,
-        "status": db_session.status,
-        "created_at": db_session.created_at,
-        "expires_at": db_session.expires_at
-    }
-    
-    return response_data
+    return db_session
 
 @router.get("/sct/sessions/{session_id}")
 def get_session(session_id: str, db: Session = Depends(get_db)):

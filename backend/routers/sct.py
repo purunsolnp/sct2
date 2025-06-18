@@ -382,8 +382,24 @@ def list_sessions_by_user(
         }
         session_list.append(session_data)
     
-    print("=== 세션 목록 조회 응답 데이터 ===")
-    print(json.dumps({"sessions": session_list, "total_count": len(session_list)}, ensure_ascii=False, indent=2))
+    # 간소화된 로그 출력 (응답 데이터와 해석 제외)
+    simplified_sessions = []
+    for session in session_list:
+        simplified_session = {
+            "session_id": session["session_id"],
+            "patient_name": session["patient_name"],
+            "doctor_id": session["doctor_id"],
+            "status": session["status"],
+            "created_at": session["created_at"],
+            "submitted_at": session["submitted_at"],
+            "expires_at": session["expires_at"],
+            "responses_count": len(session["responses"]) if session["responses"] else 0,
+            "has_interpretation": bool(session["interpretation"])
+        }
+        simplified_sessions.append(simplified_session)
+    
+    print("=== 세션 목록 조회 응답 데이터 (간소화) ===")
+    print(json.dumps({"sessions": simplified_sessions, "total_count": len(session_list)}, ensure_ascii=False, indent=2))
     print("=====================")
     
     return {"sessions": session_list, "total_count": len(session_list)}

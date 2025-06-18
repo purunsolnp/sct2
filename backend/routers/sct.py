@@ -54,18 +54,23 @@ def create_session(
         db_session = crud.create_session(db, session, doctor_id)
         print(f"CRUD에서 반환된 세션: {db_session.__dict__}")
         
-        # 응답 데이터 준비
+        # 응답 데이터 준비 - 명시적으로 구성
         response_data = {
-            "session_id": db_session.session_id,
-            "patient_name": db_session.patient_name,
-            "doctor_id": db_session.doctor_id,
-            "status": db_session.status,
+            "session_id": str(db_session.session_id),  # 문자열로 확실히 변환
+            "patient_name": str(db_session.patient_name),
+            "doctor_id": str(db_session.doctor_id),
+            "status": str(db_session.status),
             "created_at": db_session.created_at.isoformat(),
             "submitted_at": db_session.submitted_at.isoformat() if db_session.submitted_at else None,
             "expires_at": db_session.expires_at.isoformat()
         }
         
-        print("최종 응답 데이터:", json.dumps(response_data, ensure_ascii=False))
+        print("=== 최종 응답 데이터 ===")
+        print(json.dumps(response_data, ensure_ascii=False, indent=2))
+        print("=== session_id 값 ===")
+        print(f"session_id: {response_data['session_id']}")
+        print(f"session_id 타입: {type(response_data['session_id'])}")
+        print("=====================")
         
         return response_data
         

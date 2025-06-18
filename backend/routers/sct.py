@@ -147,20 +147,6 @@ def get_session(
     current_user=Depends(get_current_user)
 ):
     """특정 세션 정보를 조회합니다."""
-    # 사용자 승인 상태 확인
-    if not current_user.is_verified:
-        raise HTTPException(
-            status_code=403, 
-            detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
-        )
-    
-    # 사용자 활성 상태 확인
-    if not current_user.is_active:
-        raise HTTPException(
-            status_code=403, 
-            detail="비활성화된 계정입니다. 관리자에게 문의하세요."
-        )
-    
     session = crud.get_session_by_id(db, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
@@ -288,20 +274,6 @@ def get_session_responses(
 ):
     """세션의 응답 목록을 조회합니다."""
     try:
-        # 사용자 승인 상태 확인
-        if not current_user.is_verified:
-            raise HTTPException(
-                status_code=403, 
-                detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
-            )
-        
-        # 사용자 활성 상태 확인
-        if not current_user.is_active:
-            raise HTTPException(
-                status_code=403, 
-                detail="비활성화된 계정입니다. 관리자에게 문의하세요."
-            )
-        
         # 세션 조회
         session = crud.get_session_by_id(db, session_id)
         if not session:
@@ -365,20 +337,6 @@ def list_sessions_by_user(
     current_user=Depends(get_current_user)
 ):
     """특정 사용자의 세션 목록을 조회합니다."""
-    # 사용자 승인 상태 확인
-    if not current_user.is_verified:
-        raise HTTPException(
-            status_code=403, 
-            detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
-        )
-    
-    # 사용자 활성 상태 확인
-    if not current_user.is_active:
-        raise HTTPException(
-            status_code=403, 
-            detail="비활성화된 계정입니다. 관리자에게 문의하세요."
-        )
-    
     # 본인의 세션만 조회 가능
     if user_id != current_user.doctor_id:
         raise HTTPException(status_code=403, detail="다른 사용자의 세션을 조회할 권한이 없습니다.")

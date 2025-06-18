@@ -204,20 +204,6 @@ async def get_interpretation(
     current_user=Depends(get_current_user)
 ):
     """기존 해석 결과를 조회합니다."""
-    # 사용자 승인 상태 확인
-    if not current_user.is_verified:
-        raise HTTPException(
-            status_code=403, 
-            detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
-        )
-    
-    # 사용자 활성 상태 확인
-    if not current_user.is_active:
-        raise HTTPException(
-            status_code=403, 
-            detail="비활성화된 계정입니다. 관리자에게 문의하세요."
-        )
-    
     session = get_session_by_id(db, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")

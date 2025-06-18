@@ -36,6 +36,9 @@ class SessionRead(BaseModel):
     responses: Optional[List[Dict[str, Any]]]
     interpretation: Optional[str]
 
+    class Config:
+        orm_mode = True
+
 class SCTResponseCreate(BaseModel):
     item_no: int
     stem: str

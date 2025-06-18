@@ -5,6 +5,7 @@ from datetime import datetime
 from schemas import SessionCreate, SCTResponseCreate
 import crud
 from database_config import get_db
+from auth_utils import get_current_user
 
 router = APIRouter()
 
@@ -39,10 +40,13 @@ def get_sct_items():
     return {"items": items, "total_count": len(SCT_ITEMS)}
 
 @router.post("/sct/sessions", response_model=SessionCreate)
-def create_session(session: SessionCreate, db: Session = Depends(get_db)):
+def create_session(
+    session: SessionCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
     """새로운 SCT 세션을 생성합니다."""
-    # TODO: 실제 사용자 인증 로직 추가 필요
-    doctor_id = "temp_doctor"  # 임시 값, 실제로는 인증된 사용자에서 가져와야 함
+    doctor_id = current_user.doctor_id
     db_session = crud.create_session(db, session, doctor_id)
     return db_session
 

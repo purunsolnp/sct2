@@ -58,15 +58,17 @@ def get_admin_stats(db: Session = Depends(get_db)):
 def get_users(db: Session = Depends(get_db)):
     """모든 사용자 목록을 반환합니다."""
     users = crud.get_all_users(db)
-    return [
+    user_list = [
         {
             "id": user.id,
             "doctor_id": user.doctor_id,
             "email": user.email,
             "is_admin": user.is_admin,
             "is_active": user.is_active,
+            "is_verified": user.is_verified,
             "first_name": user.first_name,
             "last_name": user.last_name,
+            "name": f"{user.first_name} {user.last_name}".strip(),
             "specialty": user.specialty,
             "hospital": user.hospital,
             "created_at": user.created_at.isoformat() if user.created_at else None,
@@ -74,6 +76,8 @@ def get_users(db: Session = Depends(get_db)):
         }
         for user in users
     ]
+    
+    return {"users": user_list}
 
 @router.get("/login-attempts")
 def get_login_attempts(
@@ -93,7 +97,7 @@ def get_login_attempts(
             "timestamp": attempt.attempt_time.isoformat(),
             "ip": attempt.ip_address,
             "success": attempt.success,
-            "username": attempt.username
+            "username": attempt.doctor_id
         }
         for attempt in attempts
     ]
@@ -101,23 +105,31 @@ def get_login_attempts(
 @router.get("/settings")
 def get_settings(db: Session = Depends(get_db)):
     """시스템 설정을 반환합니다."""
-    settings = db.query(SystemSettings).first()
-    if not settings:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="System settings not found"
-        )
+    settings = db.query(SystemSettings).all()
     
-    return {
-        "max_tokens_per_request": settings.max_tokens_per_request,
-        "max_tokens_per_day": settings.max_tokens_per_day,
-        "max_tokens_per_month": settings.max_tokens_per_month,
-        "cost_per_token": float(settings.cost_per_token),
-        "session_timeout_minutes": settings.session_timeout_minutes,
-        "max_login_attempts": settings.max_login_attempts,
-        "ip_block_duration_minutes": settings.ip_block_duration_minutes,
-        "updated_at": settings.updated_at.isoformat() if settings.updated_at else None
+    # 기본 설정값
+    default_settings = {
+        "max_tokens_per_request": 4000,
+        "max_tokens_per_day": 100000,
+        "max_tokens_per_month": 3000000,
+        "cost_per_token": 0.0001,
+        "session_timeout_minutes": 1440,  # 24시간
+        "max_login_attempts": 5,
+        "ip_block_duration_minutes": 30
     }
+    
+    # 데이터베이스에서 설정값 가져오기
+    for setting in settings:
+        if setting.key in default_settings:
+            try:
+                if setting.key in ["max_tokens_per_request", "max_tokens_per_day", "max_tokens_per_month", "session_timeout_minutes", "max_login_attempts", "ip_block_duration_minutes"]:
+                    default_settings[setting.key] = int(setting.value)
+                elif setting.key == "cost_per_token":
+                    default_settings[setting.key] = float(setting.value)
+            except (ValueError, TypeError):
+                pass  # 기본값 유지
+    
+    return default_settings
 
 @router.put("/settings")
 def update_settings(
@@ -211,7 +223,15 @@ def get_gpt_usage(
         end = datetime.strptime(end_date, "%Y-%m-%d")
         end = end + timedelta(days=1) - timedelta(seconds=1)  # 해당 일의 마지막 시간까지 포함
         
-        return crud.get_gpt_usage_stats(db, start, end)
+        gpt_stats = crud.get_gpt_usage_stats(db, start, end)
+        
+        # 프론트엔드가 기대하는 형식으로 반환
+        return {
+            "usage_data": gpt_stats.get("usage_data", []),
+            "total_tokens": gpt_stats.get("total_tokens", 0),
+            "total_cost": gpt_stats.get("total_cost", 0.0),
+            "total_requests": gpt_stats.get("total_requests", 0)
+        }
     except ValueError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

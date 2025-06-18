@@ -156,13 +156,13 @@ def create_session(
 @router.get("/sct/sessions/{session_id}")
 def get_session(
     session_id: str, 
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
+    db: Session = Depends(get_db)
+    # current_user=Depends(get_current_user)  # 임시로 주석 처리
 ):
     """특정 세션 정보를 조회합니다."""
     print(f"=== 세션 조회 시작 ===")
     print(f"요청된 session_id: {session_id}")
-    print(f"현재 사용자: {current_user.doctor_id}")
+    # print(f"현재 사용자: {current_user.doctor_id}")  # 임시로 주석 처리
     
     session = crud.get_session_by_id(db, session_id)
     if not session:
@@ -170,8 +170,8 @@ def get_session(
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
     
     print(f"세션 소유자: {session.doctor_id}")
-    print(f"현재 사용자: {current_user.doctor_id}")
-    print(f"소유자 일치 여부: {session.doctor_id == current_user.doctor_id}")
+    # print(f"현재 사용자: {current_user.doctor_id}")  # 임시로 주석 처리
+    # print(f"소유자 일치 여부: {session.doctor_id == current_user.doctor_id}")  # 임시로 주석 처리
     
     # 세션 소유자 확인 - 임시로 주석 처리
     # if session.doctor_id != current_user.doctor_id:

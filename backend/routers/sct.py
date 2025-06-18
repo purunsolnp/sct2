@@ -39,7 +39,7 @@ def get_sct_items():
         })
     return {"items": items, "total_count": len(SCT_ITEMS)}
 
-@router.post("/sct/sessions", response_model=SessionRead)
+@router.post("/sct/sessions")
 def create_session(
     session: SessionCreate,
     db: Session = Depends(get_db),
@@ -48,7 +48,16 @@ def create_session(
     """새로운 SCT 세션을 생성합니다."""
     doctor_id = current_user.doctor_id
     db_session = crud.create_session(db, session, doctor_id)
-    return db_session
+    
+    # 간단한 응답 반환
+    return {
+        "session_id": db_session.session_id,
+        "patient_name": db_session.patient_name,
+        "doctor_id": db_session.doctor_id,
+        "status": db_session.status,
+        "created_at": db_session.created_at,
+        "expires_at": db_session.expires_at
+    }
 
 @router.get("/sct/sessions/{session_id}")
 def get_session(session_id: str, db: Session = Depends(get_db)):

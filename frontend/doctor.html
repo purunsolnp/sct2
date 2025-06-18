@@ -1067,9 +1067,12 @@
                 
                 const sessionData = await response.json();
                 debugLog('생성된 세션', sessionData);
+                debugLog('session_id 값:', sessionData.session_id);
+                debugLog('session_id 타입:', typeof sessionData.session_id);
                 
                 // 성공 메시지 및 링크 표시
                 const patientLink = `https://psysct.netlify.app/patient.html?session=${sessionData.session_id}`;
+                debugLog('생성된 환자 링크:', patientLink);
                 currentSessionLink = patientLink;
 
                 // 링크 텍스트 설정

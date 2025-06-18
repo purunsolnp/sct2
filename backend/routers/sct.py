@@ -49,17 +49,21 @@ def create_session(
     doctor_id = current_user.doctor_id
     db_session = crud.create_session(db, session, doctor_id)
     
-    # 디버깅을 위한 로깅 추가
-    print("생성된 세션 정보:", {
+    # SQLAlchemy 모델을 딕셔너리로 변환
+    session_data = {
         "session_id": db_session.session_id,
         "patient_name": db_session.patient_name,
         "doctor_id": db_session.doctor_id,
         "status": db_session.status,
         "created_at": db_session.created_at,
+        "submitted_at": db_session.submitted_at,
         "expires_at": db_session.expires_at
-    })
+    }
     
-    return db_session
+    # 디버깅을 위한 로깅 추가
+    print("생성된 세션 정보:", session_data)
+    
+    return session_data
 
 @router.get("/sct/sessions/{session_id}")
 def get_session(session_id: str, db: Session = Depends(get_db)):

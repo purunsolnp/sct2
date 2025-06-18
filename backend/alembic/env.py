@@ -10,8 +10,9 @@ import sys
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-# Import the Base and models from main.py
-from main import Base
+# Import the Base and models
+from models import Base
+import models  # 모든 모델을 import하기 위해
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

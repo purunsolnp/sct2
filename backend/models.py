@@ -37,6 +37,8 @@ class SCTSession(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     submitted_at = Column(DateTime, nullable=True)
     expires_at = Column(DateTime)
+    responses = Column(JSON, nullable=True)
+    interpretation = Column(Text, nullable=True)
 
 class SCTResponse(Base):
     __tablename__ = "sct_responses"

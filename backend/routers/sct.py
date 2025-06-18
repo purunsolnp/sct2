@@ -40,7 +40,7 @@ def get_sct_items():
         })
     return {"items": items, "total_count": len(SCT_ITEMS)}
 
-@router.post("/sct/sessions", response_model=SessionRead)
+@router.post("/sct/sessions")
 def create_session(
     session: SessionCreate,
     db: Session = Depends(get_db),
@@ -67,11 +67,7 @@ def create_session(
         
         print("최종 응답 데이터:", json.dumps(response_data, ensure_ascii=False))
         
-        # SessionRead 모델로 변환
-        session_read = SessionRead(**response_data)
-        print("Pydantic 모델 변환 결과:", session_read.dict())
-        
-        return session_read
+        return response_data
         
     except Exception as e:
         print(f"세션 생성 중 오류 발생: {str(e)}")

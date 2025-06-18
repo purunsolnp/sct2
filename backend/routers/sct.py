@@ -279,4 +279,26 @@ def list_sessions_by_user(user_id: str, db: Session = Depends(get_db)):
     print(json.dumps({"sessions": session_list, "total_count": len(session_list)}, ensure_ascii=False, indent=2))
     print("=====================")
     
-    return {"sessions": session_list, "total_count": len(session_list)} 
+    return {"sessions": session_list, "total_count": len(session_list)}
+
+@router.delete("/sct/sessions/{session_id}")
+def delete_session(session_id: str, db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """세션을 삭제합니다."""
+    try:
+        # 세션 조회
+        session = crud.get_session_by_id(db, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+            
+        # 권한 확인 (본인의 세션만 삭제 가능)
+        if str(session.doctor_id) != str(current_user.doctor_id):
+            raise HTTPException(status_code=403, detail="이 세션을 삭제할 권한이 없습니다")
+            
+        # 세션 삭제
+        db.delete(session)
+        db.commit()
+        
+        return {"message": "세션이 성공적으로 삭제되었습니다", "session_id": session_id}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"세션 삭제 중 오류가 발생했습니다: {str(e)}") 

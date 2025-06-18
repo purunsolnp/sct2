@@ -1046,30 +1046,29 @@
                 
                 const response = await fetch(`${API_BASE}/sct/sessions`, {
                     method: 'POST',
-                    headers: getApiHeaders(),
+                    headers: {
+                        ...getApiHeaders(),
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify(requestBody)
                 });
                 
                 debugLog('세션 생성 응답 상태', response.status);
+                debugLog('세션 생성 응답 헤더', Object.fromEntries(response.headers.entries()));
                 
-                if (!response.ok) {
-                    if (response.status === 401) {
-                        alert('로그인이 만료되었습니다. 다시 로그인해주세요.');
-                        localStorage.removeItem('access_token');
-                        localStorage.removeItem('currentUser');
-                        window.location.href = 'login.html';
-                        return;
-                    }
-                    const errorData = await response.json();
-                    debugLog('세션 생성 오류', errorData);
-                    throw new Error(errorData.detail || '세션 생성에 실패했습니다.');
+                const responseText = await response.text();
+                debugLog('세션 생성 응답 원본', responseText);
+                
+                let sessionData;
+                try {
+                    sessionData = JSON.parse(responseText);
+                    debugLog('파싱된 세션 데이터', sessionData);
+                } catch (e) {
+                    throw new Error(`세션 데이터 파싱 실패: ${e.message}, 원본 데이터: ${responseText}`);
                 }
                 
-                const sessionData = await response.json();
-                debugLog('생성된 세션', sessionData);
-                
                 if (!sessionData || !sessionData.session_id) {
-                    throw new Error('세션 ID가 없습니다. 서버 응답:', JSON.stringify(sessionData));
+                    throw new Error(`세션 ID가 없습니다. 서버 응답: ${responseText}`);
                 }
                 
                 debugLog('session_id 값:', sessionData.session_id);

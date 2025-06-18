@@ -49,8 +49,18 @@ def create_session(
     doctor_id = current_user.doctor_id
     db_session = crud.create_session(db, session, doctor_id)
     
-    # 간단한 응답 반환
-    return {
+    # 디버깅을 위한 로깅 추가
+    print("생성된 세션 정보:", {
+        "session_id": db_session.session_id,
+        "patient_name": db_session.patient_name,
+        "doctor_id": db_session.doctor_id,
+        "status": db_session.status,
+        "created_at": db_session.created_at,
+        "expires_at": db_session.expires_at
+    })
+    
+    # 응답 데이터
+    response_data = {
         "session_id": db_session.session_id,
         "patient_name": db_session.patient_name,
         "doctor_id": db_session.doctor_id,
@@ -58,6 +68,8 @@ def create_session(
         "created_at": db_session.created_at,
         "expires_at": db_session.expires_at
     }
+    
+    return response_data
 
 @router.get("/sct/sessions/{session_id}")
 def get_session(session_id: str, db: Session = Depends(get_db)):

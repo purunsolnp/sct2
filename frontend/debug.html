@@ -378,8 +378,7 @@
 
                 const userData = JSON.parse(currentUser);
                 const requestBody = {
-                    patient_name: patientName,
-                    assigned_by: userData.doctorId
+                    patient_name: patientName
                 };
 
                 log(`요청 데이터: ${JSON.stringify(requestBody)}`, 'info');

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from datetime import datetime
-from schemas import SessionCreate, SCTResponseCreate
+from schemas import SessionCreate, SCTResponseCreate, SessionRead
 import crud
 from database_config import get_db
 from auth_utils import get_current_user
@@ -39,7 +39,7 @@ def get_sct_items():
         })
     return {"items": items, "total_count": len(SCT_ITEMS)}
 
-@router.post("/sct/sessions", response_model=SessionCreate)
+@router.post("/sct/sessions", response_model=SessionRead)
 def create_session(
     session: SessionCreate,
     db: Session = Depends(get_db),

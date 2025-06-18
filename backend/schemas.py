@@ -24,7 +24,17 @@ class TokenResponse(BaseModel):
 
 class SessionCreate(BaseModel):
     patient_name: str
+
+class SessionRead(BaseModel):
+    session_id: str
+    patient_name: str
     assigned_by: str
+    status: str
+    created_at: datetime
+    submitted_at: Optional[datetime]
+    expires_at: datetime
+    responses: Optional[List[Dict[str, Any]]]
+    interpretation: Optional[str]
 
 class SCTResponseCreate(BaseModel):
     item_no: int

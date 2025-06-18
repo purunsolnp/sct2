@@ -109,7 +109,7 @@ async def gpt_interpret(session_id: str, db: Session = Depends(get_db)):
         # 응답 텍스트 구성
         responses_text = ""
         for response in responses:
-            responses_text += f"\n{response.item_no}. {response.stem} → {response.answer}"
+            responses_text += f"\n{response['item_no']}. {response['stem']} → {response['answer']}"
         
         # 프롬프트 구성
         prompt = SCT_INTERPRETATION_PROMPT.format(

@@ -46,24 +46,19 @@ def create_session(
     current_user=Depends(get_current_user)
 ):
     """새로운 SCT 세션을 생성합니다."""
-    doctor_id = current_user.doctor_id
-    db_session = crud.create_session(db, session, doctor_id)
-    
-    # SQLAlchemy 모델을 딕셔너리로 변환
-    session_data = {
-        "session_id": db_session.session_id,
-        "patient_name": db_session.patient_name,
-        "doctor_id": db_session.doctor_id,
-        "status": db_session.status,
-        "created_at": db_session.created_at,
-        "submitted_at": db_session.submitted_at,
-        "expires_at": db_session.expires_at
-    }
-    
-    # 디버깅을 위한 로깅 추가
-    print("생성된 세션 정보:", session_data)
-    
-    return session_data
+    try:
+        doctor_id = current_user.doctor_id
+        print(f"세션 생성 시작 - doctor_id: {doctor_id}, patient_name: {session.patient_name}")
+        
+        db_session = crud.create_session(db, session, doctor_id)
+        print(f"CRUD에서 반환된 세션: {db_session.__dict__}")
+        
+        # Pydantic 모델이 자동으로 변환하도록 직접 반환
+        return db_session
+        
+    except Exception as e:
+        print(f"세션 생성 중 오류 발생: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/sct/sessions/{session_id}")
 def get_session(session_id: str, db: Session = Depends(get_db)):

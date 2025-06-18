@@ -3,10 +3,15 @@ from sqlalchemy.orm import Session
 from schemas import UserLogin, TokenResponse, UserCreate
 import crud
 from database_config import get_db
-from auth_utils import verify_password, create_access_token, get_password_hash
+from auth_utils import verify_password, create_access_token, get_password_hash, get_current_user
 from datetime import timedelta
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/auth")
+
+class PasswordChange(BaseModel):
+    current_password: str
+    new_password: str
 
 @router.get("/check-id/{doctor_id}")
 def check_id_duplicate(doctor_id: str, db: Session = Depends(get_db)):
@@ -72,4 +77,24 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
             "first_name": db_user.first_name,
             "last_name": db_user.last_name
         }
-    ) 
+    )
+
+@router.post("/change-password")
+def change_password(
+    password_data: PasswordChange,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """비밀번호 변경"""
+    # 현재 비밀번호 확인
+    if not verify_password(password_data.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=401, detail="현재 비밀번호가 일치하지 않습니다")
+    
+    # 새 비밀번호 해싱
+    new_hashed_password = get_password_hash(password_data.new_password)
+    
+    # 비밀번호 업데이트
+    current_user.hashed_password = new_hashed_password
+    db.commit()
+    
+    return {"message": "비밀번호가 성공적으로 변경되었습니다"} 

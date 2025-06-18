@@ -60,11 +60,11 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     if payload is None:
         raise credentials_exception
     
-    doctor_id: str = payload.get("sub")
-    if doctor_id is None:
+    user_id: str = payload.get("sub")
+    if user_id is None:
         raise credentials_exception
     
-    user = crud.get_user_by_doctor_id(db, doctor_id)
+    user = crud.get_user_by_id(db, user_id)
     if user is None:
         raise credentials_exception
     

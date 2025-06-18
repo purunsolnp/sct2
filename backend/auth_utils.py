@@ -47,7 +47,7 @@ def verify_token(token: str) -> Optional[dict]:
     except JWTError:
         return None
 
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security), db: Session = Depends(get_db)):
+async def get_current_user(db: Session = Depends(get_db), token: str = Depends(security)):
     """현재 인증된 사용자 가져오기"""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -55,16 +55,15 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    token = credentials.credentials
-    payload = verify_token(token)
-    if payload is None:
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        doctor_id: str = payload.get("sub")
+        if doctor_id is None:
+            raise credentials_exception
+    except JWTError:
         raise credentials_exception
     
-    user_id: str = payload.get("sub")
-    if user_id is None:
-        raise credentials_exception
-    
-    user = crud.get_user_by_id(db, user_id)
+    user = crud.get_user_by_doctor_id(db, doctor_id)
     if user is None:
         raise credentials_exception
     

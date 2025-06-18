@@ -6,6 +6,7 @@ from typing import List, Dict, Any, Optional
 import crud
 from auth_utils import get_current_admin_user
 from models import User, LoginAttempt, SystemSettings
+from pydantic import BaseModel
 
 router = APIRouter(
     prefix="/admin",
@@ -247,4 +248,54 @@ def get_gpt_usage(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid date format. Use YYYY-MM-DD"
+        )
+
+class UserStatusUpdate(BaseModel):
+    is_active: Optional[bool] = None
+    is_verified: Optional[bool] = None
+
+@router.patch("/users/{doctor_id}/status")
+def update_user_status(
+    doctor_id: str,
+    status_update: UserStatusUpdate,
+    db: Session = Depends(get_db)
+):
+    """사용자의 활성 상태와 승인 상태를 업데이트합니다."""
+    # 사용자 조회
+    user = db.query(User).filter(User.doctor_id == doctor_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="사용자를 찾을 수 없습니다."
+        )
+    
+    # 상태 업데이트
+    if status_update.is_active is not None:
+        user.is_active = status_update.is_active
+    
+    if status_update.is_verified is not None:
+        user.is_verified = status_update.is_verified
+    
+    # 업데이트 시간 기록
+    user.updated_at = datetime.now()
+    
+    try:
+        db.commit()
+        db.refresh(user)
+        
+        return {
+            "message": "사용자 상태가 성공적으로 업데이트되었습니다.",
+            "user": {
+                "doctor_id": user.doctor_id,
+                "email": user.email,
+                "is_active": user.is_active,
+                "is_verified": user.is_verified,
+                "updated_at": user.updated_at.isoformat() if user.updated_at else None
+            }
+        }
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"사용자 상태 업데이트 중 오류가 발생했습니다: {str(e)}"
         ) 

@@ -33,8 +33,6 @@ class SessionRead(BaseModel):
     created_at: datetime
     submitted_at: Optional[datetime]
     expires_at: datetime
-    responses: Optional[List[Dict[str, Any]]]
-    interpretation: Optional[str]
 
     class Config:
         orm_mode = True
@@ -57,8 +55,6 @@ class SCTSessionResponse(BaseModel):
     created_at: datetime
     submitted_at: Optional[datetime]
     expires_at: datetime
-    responses: Optional[List[Dict[str, Any]]]
-    interpretation: Optional[str]
 
 class UserStatusUpdate(BaseModel):
     is_active: bool

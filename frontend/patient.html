@@ -342,7 +342,7 @@
                 }
                 
                 // 세션 정보 로드
-                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}`, {
+                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/patient`, {
                     headers: {
                         'Content-Type': 'application/json'
                     }
@@ -487,7 +487,7 @@
         async function saveToServer() {
             try {
                 // 🚨 수정된 엔드포인트: 환자용 응답 저장
-                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/responses`, {
+                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/responses/patient`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -536,7 +536,7 @@
                 saveCurrentAnswer();
                 
                 // 🚨 수정된 엔드포인트: 환자용 검사 완료
-                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/complete`, {
+                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/complete/patient`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'

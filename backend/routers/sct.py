@@ -265,6 +265,31 @@ def save_responses(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"응답 저장 중 오류가 발생했습니다: {str(e)}")
 
+@router.post("/sct/sessions/{session_id}/responses/patient")
+def save_responses_patient(
+    session_id: str, 
+    responses: Dict[str, List[SCTResponseCreate]], 
+    db: Session = Depends(get_db)
+):
+    """환자용 SCT 검사 응답 임시 저장 (인증 불필요)"""
+    try:
+        # 세션 조회
+        session = crud.get_session_by_id(db, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 완료된 세션은 수정할 수 없음
+        if session.status == "complete":
+            raise HTTPException(status_code=403, detail="이미 완료된 검사입니다.")
+        
+        # 응답 저장 (상태는 변경하지 않음)
+        session.responses = [response.dict() for response in responses["responses"]]
+        db.commit()
+        
+        return {"message": "응답이 임시 저장되었습니다", "session_id": session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"응답 저장 중 오류가 발생했습니다: {str(e)}")
+
 @router.post("/sct/sessions/{session_id}/complete")
 def complete_session(
     session_id: str, 
@@ -296,6 +321,33 @@ def complete_session(
         # 세션 소유자 확인
         if session.doctor_id != current_user.doctor_id:
             raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다.")
+        
+        # 응답 저장 및 상태 업데이트
+        session.responses = [response.dict() for response in responses["responses"]]
+        session.status = "complete"
+        session.submitted_at = datetime.utcnow()
+        db.commit()
+        
+        return {"message": "검사가 완료되었습니다", "session_id": session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"검사 완료 처리 중 오류가 발생했습니다: {str(e)}")
+
+@router.post("/sct/sessions/{session_id}/complete/patient")
+def complete_session_patient(
+    session_id: str, 
+    responses: Dict[str, List[SCTResponseCreate]], 
+    db: Session = Depends(get_db)
+):
+    """환자용 SCT 검사 완료 처리 (인증 불필요)"""
+    try:
+        # 세션 조회
+        session = crud.get_session_by_id(db, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 이미 완료된 세션은 다시 완료할 수 없음
+        if session.status == "complete":
+            raise HTTPException(status_code=403, detail="이미 완료된 검사입니다.")
         
         # 응답 저장 및 상태 업데이트
         session.responses = [response.dict() for response in responses["responses"]]
@@ -442,4 +494,60 @@ def delete_session(session_id: str, db: Session = Depends(get_db), current_user=
         return {"message": "세션이 성공적으로 삭제되었습니다", "session_id": session_id}
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"세션 삭제 중 오류가 발생했습니다: {str(e)}") 
+        raise HTTPException(status_code=500, detail=f"세션 삭제 중 오류가 발생했습니다: {str(e)}")
+
+@router.get("/sct/sessions/{session_id}/patient")
+def get_session_for_patient(
+    session_id: str, 
+    db: Session = Depends(get_db)
+):
+    """환자용 세션 정보 조회 (인증 불필요)"""
+    print(f"=== 환자용 세션 조회 시작 ===")
+    print(f"요청된 session_id: {session_id}")
+    
+    session = crud.get_session_by_id(db, session_id)
+    if not session:
+        print(f"세션을 찾을 수 없음: {session_id}")
+        raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+    
+    print(f"세션 상태: {session.status}")
+    
+    # 완료된 세션은 환자가 접근할 수 없음
+    if session.status == "complete":
+        print(f"완료된 세션 접근 시도: {session_id}")
+        raise HTTPException(status_code=403, detail="이미 완료된 검사입니다.")
+    
+    # SCT 문항 추가
+    items = []
+    for i, stem in enumerate(SCT_ITEMS, 1):
+        items.append({
+            "item_no": i,
+            "stem": stem,
+            "answer": ""  # 초기값은 빈 문자열
+        })
+    
+    # 응답 데이터 구성 (환자용 - 민감한 정보 제외)
+    response_data = {
+        "session_id": str(session.session_id),
+        "patient_name": str(session.patient_name),
+        "status": str(session.status),
+        "created_at": session.created_at.isoformat(),
+        "expires_at": session.expires_at.isoformat(),
+        "items": items,  # SCT 문항 추가
+        "responses": session.responses if session.responses else []  # 기존 응답이 있으면 사용
+    }
+    
+    print("=== 환자용 세션 조회 응답 데이터 (간소화) ===")
+    simplified_response = {
+        "session_id": str(session.session_id),
+        "patient_name": str(session.patient_name),
+        "status": str(session.status),
+        "created_at": session.created_at.isoformat(),
+        "expires_at": session.expires_at.isoformat(),
+        "items_count": len(items),
+        "responses_count": len(session.responses) if session.responses else 0
+    }
+    print(json.dumps(simplified_response, ensure_ascii=False, indent=2))
+    print("=====================")
+    
+    return response_data 

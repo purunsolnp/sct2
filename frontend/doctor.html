@@ -1524,27 +1524,18 @@
             try {
                 showLoading('해석 결과를 불러오는 중입니다...');
                 
-                let interpretationResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpretation`, {
+                // GPT 해석 엔드포인트 호출
+                const response = await fetch(`${API_BASE}/gpt/interpret/${sessionId}`, {
+                    method: 'POST',
                     headers: getApiHeaders()
                 });
                 
-                if (interpretationResponse.status === 404) {
-                    // 해석이 없으면 새로 생성
-                    showLoading('새로운 해석을 생성하는 중입니다...');
-                    await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpret`, {
-                        method: 'POST',
-                        headers: getApiHeaders()
-                    });
-                    interpretationResponse = await fetch(`${API_BASE}/sct/sessions/${sessionId}/interpretation`, {
-                        headers: getApiHeaders()
-                    });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.detail || '해석 생성에 실패했습니다.');
                 }
                 
-                if (!interpretationResponse.ok) {
-                    throw new Error('해석 결과를 불러올 수 없습니다.');
-                }
-                
-                const data = await interpretationResponse.json();
+                const data = await response.json();
                 currentInterpretation = data.interpretation;
                 renderInterpretationWithTitle(data.interpretation);
                 
@@ -1564,7 +1555,8 @@
             try {
                 showLoading('해석을 재생성하는 중입니다...');
                 
-                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/regenerate`, {
+                // GPT 해석 엔드포인트 호출
+                const response = await fetch(`${API_BASE}/gpt/interpret/${sessionId}`, {
                     method: 'POST',
                     headers: getApiHeaders()
                 });
@@ -1575,21 +1567,13 @@
                 }
                 
                 const data = await response.json();
-                
-                // 성공 메시지 표시
-                showToast('success', data.message || '해석이 성공적으로 재생성되었습니다.');
+                currentInterpretation = data.interpretation;
                 
                 // 해석 내용 업데이트
-                const interpretationElement = document.getElementById('interpretation-content');
-                if (interpretationElement) {
-                    interpretationElement.innerHTML = marked.parse(data.interpretation);
-                }
+                renderInterpretationWithTitle(data.interpretation);
                 
-                // 해석 시간 업데이트
-                const timeElement = document.getElementById('interpretation-time');
-                if (timeElement) {
-                    timeElement.textContent = new Date(data.generated_at).toLocaleString();
-                }
+                // 성공 메시지 표시
+                showToast('success', '해석이 성공적으로 재생성되었습니다.');
                 
             } catch (error) {
                 console.error('해석 재생성 오류:', error);

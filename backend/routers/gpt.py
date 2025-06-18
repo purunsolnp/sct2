@@ -5,9 +5,12 @@ import openai
 import os
 import json
 from typing import List, Dict, Any
-from models import SCTSession, SCTResponse
+from models import SCTSession, SCTResponse, GPTTokenUsage
 from crud import get_session_by_id, get_responses_by_session_id
 import logging
+
+# 로거 설정
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -83,6 +86,12 @@ Vaillant의 방어기제 분류 체계를 기반으로 주요 방어기제를 �
 각 항목별로 소제목을 붙이고, {patient_name}님의 실제 응답을 인용해 해석해 주세요.  
 불필요한 반복이나 단순 요약은 피하고, 임상적 통찰과 치료적 제안을 충분히 포함하세요."""
 
+def calculate_gpt_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
+    """GPT 토큰 사용량에 따른 비용을 계산합니다."""
+    if model == "gpt-4o":
+        return (prompt_tokens * 0.03 + completion_tokens * 0.06) / 1000
+    return 0.0
+
 @router.post("/gpt/interpret/{session_id}")
 async def gpt_interpret(session_id: str, db: Session = Depends(get_db)):
     """SCT 세션에 대한 GPT 해석을 생성합니다."""
@@ -112,14 +121,15 @@ async def gpt_interpret(session_id: str, db: Session = Depends(get_db)):
         if not openai.api_key:
             raise HTTPException(status_code=500, detail="OpenAI API 키가 설정되지 않았습니다.")
         
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
+        client = openai.OpenAI(api_key=openai.api_key)
+        response = client.chat.completions.create(
+            model="gpt-4o",
             messages=[
-                {"role": "system", "content": "당신은 숙련된 임상심리사입니다. SCT 검사 해석을 전문적으로 수행합니다."},
+                {"role": "system", "content": "당신은 임상심리학 전문가입니다. SCT 응답을 분석하여 전문적이고 객관적인 해석을 제공해주세요."},
                 {"role": "user", "content": prompt}
             ],
-            max_tokens=4000,
-            temperature=0.7
+            temperature=0.7,
+            max_tokens=4000
         )
         
         interpretation = response.choices[0].message.content
@@ -128,22 +138,40 @@ async def gpt_interpret(session_id: str, db: Session = Depends(get_db)):
         session.interpretation = interpretation
         db.commit()
         
-        # 토큰 사용량 로깅 (선택사항)
-        logging.info(f"GPT 토큰 사용량 - Session: {session_id}, Tokens: {response.usage.total_tokens}")
+        # 토큰 사용량 기록
+        usage = response.usage
+        model = "gpt-4o"
+        cost = calculate_gpt_cost(model, usage.prompt_tokens, usage.completion_tokens)
+        
+        token_usage = GPTTokenUsage(
+            doctor_id=session.doctor_id,
+            session_id=session_id,
+            prompt_tokens=usage.prompt_tokens,
+            completion_tokens=usage.completion_tokens,
+            total_tokens=usage.total_tokens,
+            model=model,
+            cost=cost
+        )
+        db.add(token_usage)
+        db.commit()
+        
+        logger.info(f"✅ GPT 해석 생성 완료: {usage.total_tokens} 토큰 사용 (${cost})")
         
         return {
             "session_id": session_id,
             "patient_name": session.patient_name,
             "interpretation": interpretation,
             "token_usage": {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens
+                "prompt_tokens": usage.prompt_tokens,
+                "completion_tokens": usage.completion_tokens,
+                "total_tokens": usage.total_tokens,
+                "model": model,
+                "cost": cost
             }
         }
         
     except Exception as e:
-        logging.error(f"GPT 해석 오류: {str(e)}")
+        logger.error(f"❌ GPT 해석 생성 실패: {str(e)}")
         raise HTTPException(status_code=500, detail=f"해석 생성 중 오류가 발생했습니다: {str(e)}")
 
 @router.get("/gpt/interpret/{session_id}")

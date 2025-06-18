@@ -198,6 +198,30 @@ def complete_session(session_id: str, responses: Dict[str, List[SCTResponseCreat
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"검사 완료 처리 중 오류가 발생했습니다: {str(e)}")
 
+@router.get("/sct/sessions/{session_id}/responses")
+def get_session_responses(session_id: str, db: Session = Depends(get_db)):
+    """세션의 응답 목록을 조회합니다."""
+    try:
+        # 세션 조회
+        session = crud.get_session_by_id(db, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        if not session.responses:
+            return {"responses": []}
+            
+        # 응답과 문항 정보를 합쳐서 반환
+        responses_with_stems = []
+        for response in session.responses:
+            item_no = response.get("item_no")
+            if 1 <= item_no <= len(SCT_ITEMS):
+                response["stem"] = SCT_ITEMS[item_no - 1]
+            responses_with_stems.append(response)
+            
+        return {"responses": responses_with_stems}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"응답 조회 중 오류가 발생했습니다: {str(e)}")
+
 @router.post("/sct/sessions/{session_id}/interpret")
 def generate_interpretation(session_id: str, db: Session = Depends(get_db)):
     """SCT 해석을 생성합니다."""

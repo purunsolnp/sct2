@@ -223,13 +223,23 @@ def get_gpt_usage(
         
         gpt_stats = crud.get_gpt_usage_stats(db, start, end)
         
+        # doctor_stats 형식 수정
+        doctor_stats = []
+        for user_usage in gpt_stats.get("user_usage", []):
+            doctor_stats.append({
+                "doctor_id": user_usage.get("doctor_id", ""),
+                "usage_count": 1,  # 실제로는 사용 횟수를 계산해야 하지만 임시로 1
+                "total_tokens": user_usage.get("tokens", 0),
+                "total_cost": user_usage.get("cost", 0.0)
+            })
+        
         # 프론트엔드가 기대하는 형식으로 반환
         return {
             "total_usage": {
                 "total_tokens": gpt_stats.get("total_usage", {}).get("total_tokens", 0),
                 "total_cost": gpt_stats.get("total_usage", {}).get("total_cost", 0.0)
             },
-            "doctor_stats": gpt_stats.get("user_usage", []),
+            "doctor_stats": doctor_stats,
             "model_stats": [],  # 모델별 통계는 현재 구현되지 않음
             "usage_data": gpt_stats.get("daily_usage", [])
         }

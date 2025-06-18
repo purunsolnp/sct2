@@ -163,6 +163,7 @@ def get_session(
     print(f"=== 세션 조회 시작 ===")
     print(f"요청된 session_id: {session_id}")
     print(f"현재 사용자: {current_user.doctor_id}")
+    print(f"현재 사용자 타입: {type(current_user.doctor_id)}")
     
     session = crud.get_session_by_id(db, session_id)
     if not session:
@@ -170,12 +171,17 @@ def get_session(
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
     
     print(f"세션 소유자: {session.doctor_id}")
+    print(f"세션 소유자 타입: {type(session.doctor_id)}")
     print(f"현재 사용자: {current_user.doctor_id}")
+    print(f"현재 사용자 타입: {type(current_user.doctor_id)}")
     print(f"소유자 일치 여부: {session.doctor_id == current_user.doctor_id}")
+    print(f"소유자 일치 여부 (문자열 비교): {str(session.doctor_id) == str(current_user.doctor_id)}")
     
     # 세션 소유자 확인만 적용 (승인 상태 확인 제거)
     if session.doctor_id != current_user.doctor_id:
         print(f"세션 소유자 불일치 - 세션 소유자: {session.doctor_id}, 현재 사용자: {current_user.doctor_id}")
+        print(f"세션 소유자 repr: {repr(session.doctor_id)}")
+        print(f"현재 사용자 repr: {repr(current_user.doctor_id)}")
         raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다.")
     
     # SCT 문항 추가

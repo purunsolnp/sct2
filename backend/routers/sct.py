@@ -84,7 +84,35 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
     session = crud.get_session_by_id(db, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
-    return session
+    
+    # SCT 문항 추가
+    items = []
+    for i, stem in enumerate(SCT_ITEMS, 1):
+        items.append({
+            "item_no": i,
+            "stem": stem,
+            "answer": ""  # 초기값은 빈 문자열
+        })
+    
+    # 응답 데이터 구성
+    response_data = {
+        "session_id": str(session.session_id),
+        "patient_name": str(session.patient_name),
+        "doctor_id": str(session.doctor_id),
+        "status": str(session.status),
+        "created_at": session.created_at.isoformat(),
+        "submitted_at": session.submitted_at.isoformat() if session.submitted_at else None,
+        "expires_at": session.expires_at.isoformat(),
+        "items": items,  # SCT 문항 추가
+        "responses": session.responses if session.responses else [],  # 기존 응답이 있으면 사용
+        "interpretation": session.interpretation
+    }
+    
+    print("=== 세션 조회 응답 데이터 ===")
+    print(json.dumps(response_data, ensure_ascii=False, indent=2))
+    print("=====================")
+    
+    return response_data
 
 @router.post("/sct/sessions/{session_id}/submit")
 def submit_response(session_id: str, responses: List[SCTResponseCreate], db: Session = Depends(get_db)):

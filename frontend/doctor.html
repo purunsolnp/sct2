@@ -1524,11 +1524,20 @@
             try {
                 showLoading('해석 결과를 불러오는 중입니다...');
                 
-                // GPT 해석 엔드포인트 호출
-                const response = await fetch(`${API_BASE}/gpt/interpret/${sessionId}`, {
-                    method: 'POST',
+                // 먼저 기존 해석이 있는지 확인
+                let response = await fetch(`${API_BASE}/gpt/interpret/${sessionId}`, {
+                    method: 'GET',
                     headers: getApiHeaders()
                 });
+                
+                // 기존 해석이 없으면 새로 생성
+                if (response.status === 404) {
+                    showLoading('새로운 해석을 생성하는 중입니다...');
+                    response = await fetch(`${API_BASE}/gpt/interpret/${sessionId}`, {
+                        method: 'POST',
+                        headers: getApiHeaders()
+                    });
+                }
                 
                 if (!response.ok) {
                     const errorData = await response.json();

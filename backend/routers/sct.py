@@ -162,15 +162,41 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
     
     return response_data
 
-@router.post("/sct/sessions/{session_id}/submit")
-def submit_response(session_id: str, responses: List[SCTResponseCreate], db: Session = Depends(get_db)):
-    """SCT 검사 응답을 제출합니다."""
+@router.post("/sct/sessions/{session_id}/responses")
+def save_responses(session_id: str, responses: Dict[str, List[SCTResponseCreate]], db: Session = Depends(get_db)):
+    """SCT 검사 응답을 임시 저장합니다."""
     try:
-        # 세션 제출 처리
-        updated_session = crud.submit_session_responses(db, session_id, responses)
-        return {"message": "응답이 성공적으로 제출되었습니다", "session_id": session_id}
+        # 세션 조회
+        session = crud.get_session_by_id(db, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 응답 저장 (상태는 변경하지 않음)
+        session.responses = [response.dict() for response in responses["responses"]]
+        db.commit()
+        
+        return {"message": "응답이 임시 저장되었습니다", "session_id": session_id}
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"제출 처리 중 오류가 발생했습니다: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"응답 저장 중 오류가 발생했습니다: {str(e)}")
+
+@router.post("/sct/sessions/{session_id}/complete")
+def complete_session(session_id: str, responses: Dict[str, List[SCTResponseCreate]], db: Session = Depends(get_db)):
+    """SCT 검사를 완료 처리합니다."""
+    try:
+        # 세션 조회
+        session = crud.get_session_by_id(db, session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 응답 저장 및 상태 업데이트
+        session.responses = [response.dict() for response in responses["responses"]]
+        session.status = "complete"
+        session.submitted_at = datetime.utcnow()
+        db.commit()
+        
+        return {"message": "검사가 완료되었습니다", "session_id": session_id}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"검사 완료 처리 중 오류가 발생했습니다: {str(e)}")
 
 @router.post("/sct/sessions/{session_id}/interpret")
 def generate_interpretation(session_id: str, db: Session = Depends(get_db)):

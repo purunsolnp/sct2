@@ -1,7 +1,9 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import func, and_, desc
 from models import User, SCTSession, SCTResponse, SCTInterpretation, GPTTokenUsage, IPBlock, LoginAttempt, SystemSettings
 from schemas import UserCreate, SessionCreate
-from datetime import datetime
+from datetime import datetime, timedelta
+from typing import List, Optional
 import uuid
 
 # User CRUD
@@ -117,4 +119,146 @@ def generate_interpretation(db: Session, session_id: str):
     db.commit()
     db.refresh(session)
     
-    return interpretation 
+    return interpretation
+
+def get_all_users(db: Session) -> List[User]:
+    """모든 사용자 목록을 반환합니다."""
+    return db.query(User).all()
+
+def get_user_stats(db: Session) -> dict:
+    """사용자 관련 통계를 반환합니다."""
+    total_users = db.query(func.count(User.id)).scalar()
+    active_users = db.query(func.count(User.id)).filter(User.last_login > datetime.now() - timedelta(days=30)).scalar()
+    
+    return {
+        "total_users": total_users or 0,
+        "active_users": active_users or 0
+    }
+
+def get_session_stats(db: Session) -> dict:
+    """세션 관련 통계를 반환합니다."""
+    now = datetime.now()
+    start_of_month = datetime(now.year, now.month, 1)
+    
+    total_sessions = db.query(func.count(SCTSession.session_id)).scalar()
+    this_month_sessions = db.query(func.count(SCTSession.session_id))\
+        .filter(SCTSession.created_at >= start_of_month).scalar()
+    pending_sessions = db.query(func.count(SCTSession.session_id))\
+        .filter(SCTSession.status == 'incomplete').scalar()
+    completed_sessions = db.query(func.count(SCTSession.session_id))\
+        .filter(SCTSession.status == 'complete').scalar()
+    this_month_completed = db.query(func.count(SCTSession.session_id))\
+        .filter(and_(
+            SCTSession.status == 'complete',
+            SCTSession.created_at >= start_of_month
+        )).scalar()
+    expired_sessions = db.query(func.count(SCTSession.session_id))\
+        .filter(SCTSession.expires_at < now).scalar()
+    
+    completion_rate = (completed_sessions / total_sessions * 100) if total_sessions > 0 else 0
+    
+    return {
+        "total_sessions": total_sessions or 0,
+        "this_month_sessions": this_month_sessions or 0,
+        "pending_sessions": pending_sessions or 0,
+        "completed_sessions": completed_sessions or 0,
+        "completion_rate": round(completion_rate, 1),
+        "this_month_completed": this_month_completed or 0,
+        "expired_sessions": expired_sessions or 0
+    }
+
+def get_monthly_stats(db: Session, months: int = 12) -> List[dict]:
+    """월별 통계를 반환합니다."""
+    now = datetime.now()
+    monthly_stats = []
+    
+    for i in range(months):
+        start_date = datetime(now.year, now.month, 1) - timedelta(days=30*i)
+        end_date = start_date + timedelta(days=32)
+        end_date = datetime(end_date.year, end_date.month, 1)
+        
+        total_sessions = db.query(func.count(SCTSession.session_id))\
+            .filter(and_(
+                SCTSession.created_at >= start_date,
+                SCTSession.created_at < end_date
+            )).scalar()
+            
+        completed_sessions = db.query(func.count(SCTSession.session_id))\
+            .filter(and_(
+                SCTSession.created_at >= start_date,
+                SCTSession.created_at < end_date,
+                SCTSession.status == 'complete'
+            )).scalar()
+            
+        token_usage = db.query(
+            func.sum(GPTTokenUsage.total_tokens).label('total_tokens'),
+            func.sum(GPTTokenUsage.cost).label('total_cost')
+        ).filter(and_(
+            GPTTokenUsage.created_at >= start_date,
+            GPTTokenUsage.created_at < end_date
+        )).first()
+        
+        monthly_stats.append({
+            "month_name": start_date.strftime("%Y-%m"),
+            "total_sessions": total_sessions or 0,
+            "completed_sessions": completed_sessions or 0,
+            "total_tokens": token_usage.total_tokens or 0 if token_usage else 0,
+            "total_cost": float(token_usage.total_cost or 0) if token_usage else 0
+        })
+    
+    return monthly_stats
+
+def get_gpt_usage_stats(db: Session, start_date: datetime, end_date: datetime) -> dict:
+    """GPT 사용량 통계를 반환합니다."""
+    # 전체 사용량
+    total_usage = db.query(
+        func.sum(GPTTokenUsage.total_tokens).label('total_tokens'),
+        func.sum(GPTTokenUsage.cost).label('total_cost')
+    ).filter(and_(
+        GPTTokenUsage.created_at >= start_date,
+        GPTTokenUsage.created_at <= end_date
+    )).first()
+    
+    # 일별 사용량
+    daily_usage = db.query(
+        func.date(GPTTokenUsage.created_at).label('date'),
+        func.sum(GPTTokenUsage.total_tokens).label('tokens'),
+        func.sum(GPTTokenUsage.cost).label('cost')
+    ).filter(and_(
+        GPTTokenUsage.created_at >= start_date,
+        GPTTokenUsage.created_at <= end_date
+    )).group_by(func.date(GPTTokenUsage.created_at))\
+    .order_by(func.date(GPTTokenUsage.created_at)).all()
+    
+    # 사용자별 사용량
+    user_usage = db.query(
+        GPTTokenUsage.doctor_id,
+        func.sum(GPTTokenUsage.total_tokens).label('tokens'),
+        func.sum(GPTTokenUsage.cost).label('cost')
+    ).filter(and_(
+        GPTTokenUsage.created_at >= start_date,
+        GPTTokenUsage.created_at <= end_date
+    )).group_by(GPTTokenUsage.doctor_id).all()
+    
+    return {
+        "total_usage": {
+            "total_tokens": total_usage.total_tokens or 0 if total_usage else 0,
+            "total_cost": float(total_usage.total_cost or 0) if total_usage else 0
+        },
+        "daily_usage": [
+            {
+                "date": usage.date.strftime("%Y-%m-%d"),
+                "tokens": usage.tokens or 0,
+                "cost": float(usage.cost or 0)
+            }
+            for usage in daily_usage
+        ],
+        "user_usage": [
+            {
+                "doctor_id": usage.doctor_id,
+                "tokens": usage.tokens or 0,
+                "cost": float(usage.cost or 0)
+            }
+            for usage in user_usage
+        ]
+    } 

@@ -61,10 +61,14 @@ def get_users(db: Session = Depends(get_db)):
     return [
         {
             "id": user.id,
-            "username": user.username,
+            "doctor_id": user.doctor_id,
             "email": user.email,
-            "role": user.role,
+            "is_admin": user.is_admin,
             "is_active": user.is_active,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "specialty": user.specialty,
+            "hospital": user.hospital,
             "created_at": user.created_at.isoformat() if user.created_at else None,
             "last_login": user.last_login.isoformat() if user.last_login else None
         }

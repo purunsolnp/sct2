@@ -39,13 +39,17 @@ def create_session(db: Session, session: SessionCreate, doctor_id: str):
     session_id = str(uuid.uuid4())
     print(f"생성할 session_id: {session_id}")
     
+    # 만료 시간을 7일 후로 설정
+    now = datetime.utcnow()
+    expires_at = now + timedelta(days=7)
+    
     db_session = SCTSession(
         session_id=session_id,
         doctor_id=doctor_id,
         patient_name=session.patient_name,
         status="incomplete",
-        created_at=datetime.utcnow(),
-        expires_at=datetime.utcnow(),  # 실제 만료일 계산 필요
+        created_at=now,
+        expires_at=expires_at,
     )
     
     try:
@@ -67,7 +71,9 @@ def create_session(db: Session, session: SessionCreate, doctor_id: str):
     except Exception as e:
         db.rollback()
         print(f"세션 생성 중 오류: {str(e)}")
-        raise Exception(f"세션 생성 중 오류 발생: {str(e)}")
+        # 상세한 오류 메시지 포함
+        error_msg = f"세션 생성 중 오류 발생 - doctor_id: {doctor_id}, patient_name: {session.patient_name}, error: {str(e)}"
+        raise Exception(error_msg)
 
 def get_sessions_by_user(db: Session, doctor_id: str):
     return db.query(SCTSession).filter(SCTSession.doctor_id == doctor_id).all()

@@ -8,7 +8,9 @@ def setup_middlewares(app):
             "http://127.0.0.1:5500",
             "https://purunsolsct.netlify.app",
             "https://psysct.netlify.app",
-            "https://sct-backend-7epf.onrender.com"
+            "https://sct-backend-7epf.onrender.com",
+            "https://sct-backend-7ep1.onrender.com",
+            "*"  # 개발 중에는 모든 origin 허용
         ],
         allow_credentials=True,
         allow_methods=["*"],

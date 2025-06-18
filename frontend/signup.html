@@ -635,7 +635,7 @@
                 if (response.ok) {
                     const data = await response.json();
                     
-                    if (data.available) {
+                    if (!data.exists) {
                         resultDiv.innerHTML = '<span class="check-success">✅ 사용 가능한 ID입니다</span>';
                         isIdChecked = true;
                         isIdAvailable = true;

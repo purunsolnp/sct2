@@ -96,8 +96,14 @@ def create_session(
 ):
     """새로운 SCT 세션을 생성합니다."""
     try:
+        print(f"=== 세션 생성 시작 ===")
+        print(f"현재 사용자: {current_user.doctor_id}")
+        print(f"사용자 상태 - is_verified: {current_user.is_verified}, is_active: {current_user.is_active}")
+        print(f"환자 이름: {session.patient_name}")
+        
         # 사용자 승인 상태 확인
         if not current_user.is_verified:
+            print(f"승인되지 않은 사용자: {current_user.doctor_id}")
             raise HTTPException(
                 status_code=403, 
                 detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
@@ -105,6 +111,7 @@ def create_session(
         
         # 사용자 활성 상태 확인
         if not current_user.is_active:
+            print(f"비활성화된 사용자: {current_user.doctor_id}")
             raise HTTPException(
                 status_code=403, 
                 detail="비활성화된 계정입니다. 관리자에게 문의하세요."
@@ -136,9 +143,15 @@ def create_session(
         
         return response_data
         
+    except HTTPException:
+        # HTTPException은 그대로 다시 발생시킴
+        raise
     except Exception as e:
-        print(f"세션 생성 중 오류 발생: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        print(f"세션 생성 중 예상치 못한 오류 발생: {str(e)}")
+        print(f"오류 타입: {type(e)}")
+        import traceback
+        print(f"스택 트레이스: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"세션 생성 중 오류가 발생했습니다: {str(e)}")
 
 @router.get("/sct/sessions/{session_id}")
 def get_session(

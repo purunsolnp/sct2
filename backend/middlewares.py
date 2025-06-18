@@ -8,6 +8,7 @@ def setup_middlewares(app):
             "http://127.0.0.1:5500",
             "https://purunsolsct.netlify.app",
             "https://psysct.netlify.app",
+            "https://sct-backend-7epf.onrender.com"
         ],
         allow_credentials=True,
         allow_methods=["*"],

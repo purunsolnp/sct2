@@ -152,27 +152,21 @@ def update_settings(
 @router.get("/usage-stats")
 def get_usage_stats(months: int = 12, db: Session = Depends(get_db)):
     """월별 사용 통계를 반환합니다."""
-    # 현재 월부터 이전 months개월의 통계 생성
-    now = datetime.now()
-    monthly_stats = []
+    monthly_stats = crud.get_monthly_stats(db, months)
     
-    for i in range(months):
-        date = now - timedelta(days=30*i)
-        monthly_stats.append({
-            "month_name": date.strftime("%Y-%m"),
-            "total_sessions": 0,
-            "completed_sessions": 0,
-            "total_tokens": 0,
-            "total_cost": 0
-        })
+    # 총계 계산
+    total_sessions = sum(stat["total_sessions"] for stat in monthly_stats)
+    total_completed = sum(stat["completed_sessions"] for stat in monthly_stats)
+    total_tokens = sum(stat["total_tokens"] for stat in monthly_stats)
+    total_cost = sum(stat["total_cost"] for stat in monthly_stats)
     
     return {
         "monthly_stats": monthly_stats,
         "total": {
-            "sessions": 0,
-            "completed": 0,
-            "tokens": 0,
-            "cost": 0
+            "sessions": total_sessions,
+            "completed": total_completed,
+            "tokens": total_tokens,
+            "cost": total_cost
         }
     }
 
@@ -187,25 +181,35 @@ def get_ip_blocks(db: Session = Depends(get_db)):
 @router.get("/dashboard/stats")
 def get_dashboard_stats(db: Session = Depends(get_db)):
     """대시보드 통계를 반환합니다."""
+    user_stats = crud.get_user_stats(db)
+    session_stats = crud.get_session_stats(db)
+    
     return {
-        "total_users": 0,
-        "total_sessions": 0,
-        "this_month_sessions": 0,
-        "pending_sessions": 0,
-        "active_users": 0,
-        "completion_rate": 0,
-        "this_month_completed": 0,
-        "expired_sessions": 0
+        "total_users": user_stats["total_users"],
+        "active_users": user_stats["active_users"],
+        "total_sessions": session_stats["total_sessions"],
+        "this_month_sessions": session_stats["this_month_sessions"],
+        "pending_sessions": session_stats["pending_sessions"],
+        "completion_rate": session_stats["completion_rate"],
+        "this_month_completed": session_stats["this_month_completed"],
+        "expired_sessions": session_stats["expired_sessions"]
     }
 
 @router.get("/gpt-usage")
-def get_gpt_usage(start_date: str, end_date: str, db: Session = Depends(get_db)):
-    """GPT 사용량 통계를 반환합니다."""
-    return {
-        "total_usage": {
-            "total_tokens": 0,
-            "total_cost": 0.0
-        },
-        "daily_usage": [],
-        "user_usage": []
-    } 
+def get_gpt_usage(
+    start_date: str,
+    end_date: str,
+    db: Session = Depends(get_db)
+):
+    """특정 기간의 GPT 사용량 통계를 반환합니다."""
+    try:
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+        end = end + timedelta(days=1) - timedelta(seconds=1)  # 해당 일의 마지막 시간까지 포함
+        
+        return crud.get_gpt_usage_stats(db, start, end)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid date format. Use YYYY-MM-DD"
+        ) 

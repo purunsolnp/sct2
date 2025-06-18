@@ -31,11 +31,14 @@ class SessionRead(BaseModel):
     doctor_id: str
     status: str
     created_at: datetime
-    submitted_at: Optional[datetime]
+    submitted_at: Optional[datetime] = None
     expires_at: datetime
-
+    
     class Config:
-        orm_mode = True
+        from_attributes = True  # SQLAlchemy 모델과 호환
+        json_encoders = {
+            datetime: lambda dt: dt.isoformat()
+        }
 
 class SCTResponseCreate(BaseModel):
     item_no: int

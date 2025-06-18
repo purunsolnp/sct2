@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from datetime import datetime
+import json
 from schemas import SessionCreate, SCTResponseCreate, SessionRead
 import crud
 from database_config import get_db
@@ -53,8 +54,24 @@ def create_session(
         db_session = crud.create_session(db, session, doctor_id)
         print(f"CRUD에서 반환된 세션: {db_session.__dict__}")
         
-        # Pydantic 모델이 자동으로 변환하도록 직접 반환
-        return db_session
+        # 응답 데이터 준비
+        response_data = {
+            "session_id": db_session.session_id,
+            "patient_name": db_session.patient_name,
+            "doctor_id": db_session.doctor_id,
+            "status": db_session.status,
+            "created_at": db_session.created_at.isoformat(),
+            "submitted_at": db_session.submitted_at.isoformat() if db_session.submitted_at else None,
+            "expires_at": db_session.expires_at.isoformat()
+        }
+        
+        print("최종 응답 데이터:", json.dumps(response_data, ensure_ascii=False))
+        
+        # SessionRead 모델로 변환
+        session_read = SessionRead(**response_data)
+        print("Pydantic 모델 변환 결과:", session_read.dict())
+        
+        return session_read
         
     except Exception as e:
         print(f"세션 생성 중 오류 발생: {str(e)}")

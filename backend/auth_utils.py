@@ -68,4 +68,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     if user is None:
         raise credentials_exception
     
-    return user 
+    return user
+
+async def get_current_admin_user(current_user = Depends(get_current_user)):
+    """현재 인증된 관리자 사용자 가져오기"""
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
+        )
+    return current_user 

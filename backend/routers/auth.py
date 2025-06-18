@@ -6,9 +6,9 @@ from database_config import get_db
 from auth_utils import verify_password, create_access_token, get_password_hash
 from datetime import timedelta
 
-router = APIRouter()
+router = APIRouter(prefix="/auth")
 
-@router.get("/auth/check-id/{doctor_id}")
+@router.get("/check-id/{doctor_id}")
 def check_id_duplicate(doctor_id: str, db: Session = Depends(get_db)):
     user = crud.get_user_by_doctor_id(db, doctor_id)
     return {"exists": user is not None}

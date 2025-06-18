@@ -189,6 +189,7 @@ def get_usage_stats(months: int = 12, db: Session = Depends(get_db)):
 @router.get("/ip-blocks")
 def get_ip_blocks(db: Session = Depends(get_db)):
     """차단된 IP 목록을 반환합니다."""
+    # 실제 IP 블록 데이터가 없으므로 빈 배열 반환
     return {
         "ip_blocks": [],
         "total": 0
@@ -227,10 +228,10 @@ def get_gpt_usage(
         
         # 프론트엔드가 기대하는 형식으로 반환
         return {
-            "usage_data": gpt_stats.get("usage_data", []),
-            "total_tokens": gpt_stats.get("total_tokens", 0),
-            "total_cost": gpt_stats.get("total_cost", 0.0),
-            "total_requests": gpt_stats.get("total_requests", 0)
+            "usage_data": gpt_stats.get("daily_usage", []),
+            "total_tokens": gpt_stats.get("total_usage", {}).get("total_tokens", 0),
+            "total_cost": gpt_stats.get("total_usage", {}).get("total_cost", 0.0),
+            "total_requests": len(gpt_stats.get("daily_usage", []))
         }
     except ValueError:
         raise HTTPException(

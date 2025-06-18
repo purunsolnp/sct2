@@ -28,7 +28,7 @@ class SessionCreate(BaseModel):
 class SessionRead(BaseModel):
     session_id: str
     patient_name: str
-    assigned_by: str
+    doctor_id: str
     status: str
     created_at: datetime
     submitted_at: Optional[datetime]
@@ -51,7 +51,7 @@ class SCTResponse(BaseModel):
 
 class SCTSessionResponse(BaseModel):
     session_id: str
-    assigned_by: str
+    doctor_id: str
     patient_name: str
     status: str
     created_at: datetime

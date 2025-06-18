@@ -320,81 +320,39 @@
     </div>
 
     <script>
-        // === API 서버 주소를 여기에 설정하세요 ===
+        // API 서버 주소 설정
         const API_BASE = "https://sct-backend-7epf.onrender.com";
-        // ======================================
         
-        // 🔥 **중요**: 환자용 페이지는 인증이 필요하지 않습니다!
-        // 세션 ID만으로 접근 가능해야 합니다.
-        
-        let sessionId = '';
+        let sessionId = null;
         let patientName = '';
         let questions = [];
         let answers = [];
         let currentQuestion = 0;
         let autoSaveTimeout = null;
         
-        document.addEventListener('DOMContentLoaded', function() {
-            const urlParams = new URLSearchParams(window.location.search);
-            sessionId = urlParams.get('session');
-            
-            if (!sessionId) {
-                showError('세션 ID가 없습니다. 올바른 링크를 사용해주세요.');
-                return;
-            }
-            
-            console.log('세션 ID:', sessionId);
-            loadSession();
-        });
-        
-        // 🚨 수정된 부분: 인증 없는 API 호출
-        async function safeApiCall(url, options = {}) {
+        // 페이지 로드 시 세션 로드
+        window.addEventListener('DOMContentLoaded', async () => {
             try {
-                console.log('API 호출:', url);
+                // URL에서 세션 ID 추출
+                const urlParams = new URLSearchParams(window.location.search);
+                sessionId = urlParams.get('session');
                 
-                // 환자용 API는 인증 헤더가 필요하지 않습니다
-                const headers = {
-                    'Content-Type': 'application/json',
-                    ...options.headers
-                };
+                if (!sessionId) {
+                    throw new Error('세션이 만료되었거나 잘못된 링크입니다.');
+                }
                 
-                const response = await fetch(url, {
-                    ...options,
-                    headers
+                // 세션 정보 로드
+                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}`, {
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
                 });
                 
-                console.log('응답 상태:', response.status);
-                
                 if (!response.ok) {
-                    const errorText = await response.text();
-                    console.error('API 오류 응답:', errorText);
-                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                    throw new Error('세션을 찾을 수 없습니다');
                 }
                 
-                return await response.json();
-            } catch (error) {
-                console.error('API 호출 오류:', error);
-                throw error;
-            }
-        }
-        
-        async function loadSession() {
-            try {
-                console.log('세션 로드 시작:', sessionId);
-                
-                // 🚨 수정된 엔드포인트: 인증 없이 접근 가능한 환자용 API
-                const data = await safeApiCall(`${API_BASE}/sct/sessions/${sessionId}/patient`);
-                
-                if (!data) {
-                    throw new Error('세션 데이터를 받을 수 없습니다.');
-                }
-                
-                console.log('받은 세션 데이터:', data);
-                
-                // 세션 상태 확인
-                if (data.status === 'expired') {
-                    throw new Error('만료된 검사입니다.');
-                }
+                const data = await response.json();
                 
                 if (data.status === 'complete') {
                     showCompletion();
@@ -428,7 +386,7 @@
                 console.error('세션 로드 오류:', error);
                 showError(error.message || '검사를 불러올 수 없습니다.');
             }
-        }
+        });
         
         function findLastAnsweredQuestion() {
             for (let i = answers.length - 1; i >= 0; i--) {
@@ -529,8 +487,11 @@
         async function saveToServer() {
             try {
                 // 🚨 수정된 엔드포인트: 환자용 응답 저장
-                const response = await safeApiCall(`${API_BASE}/sct/sessions/${sessionId}/responses`, {
+                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/responses`, {
                     method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify({
                         responses: answers.map((answer, index) => ({
                             item_no: questions[index]?.item_no || index + 1,
@@ -575,8 +536,11 @@
                 saveCurrentAnswer();
                 
                 // 🚨 수정된 엔드포인트: 환자용 검사 완료
-                const response = await safeApiCall(`${API_BASE}/sct/sessions/${sessionId}/complete`, {
+                const response = await fetch(`${API_BASE}/sct/sessions/${sessionId}/complete`, {
                     method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
                     body: JSON.stringify({
                         responses: answers.map((answer, index) => ({
                             item_no: questions[index]?.item_no || index + 1,

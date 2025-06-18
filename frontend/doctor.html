@@ -912,14 +912,14 @@
                         <span class="icon">📝</span> 원본 응답
                     </button>
                     <button onclick="closeModal('interpretation-modal')" class="close-button">×</button>
-            </div>
                 </div>
+            </div>
             <div class="modal-body">
                 <div id="interpretation-content" class="interpretation-content"></div>
             </div>
-                </div>
-            </div>
-            
+        </div>
+    </div>
+    
     <!-- 원본 응답 모달 -->
     <div id="responses-modal" class="modal">
         <div class="modal-content">
@@ -1067,6 +1067,11 @@
                 
                 const sessionData = await response.json();
                 debugLog('생성된 세션', sessionData);
+                
+                if (!sessionData || !sessionData.session_id) {
+                    throw new Error('세션 ID가 없습니다. 서버 응답:', JSON.stringify(sessionData));
+                }
+                
                 debugLog('session_id 값:', sessionData.session_id);
                 debugLog('session_id 타입:', typeof sessionData.session_id);
                 

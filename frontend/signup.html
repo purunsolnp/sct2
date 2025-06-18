@@ -329,20 +329,17 @@
             <!-- 전문분야 및 소속 -->
             <div class="form-row">
                 <div class="form-group">
-                    <label for="specialty">전문분야 <span class="required">*</span></label>
-                    <select id="specialty" class="form-select" required>
+                    <label for="specialty">전문분야</label>
+                    <select id="specialty" class="form-select">
                         <option value="">선택하세요</option>
                         <option value="psychiatry">정신건강의학과</option>
                         <option value="psychology">임상심리학</option>
-                        <option value="neurology">신경과</option>
-                        <option value="pediatrics">소아청소년과</option>
-                        <option value="family">가정의학과</option>
                         <option value="other">기타</option>
                     </select>
                 </div>
                 <div class="form-group">
-                    <label for="hospital">소속기관 <span class="required">*</span></label>
-                    <input type="text" id="hospital" class="form-input" placeholder="○○병원" required>
+                    <label for="hospital">소속기관</label>
+                    <input type="text" id="hospital" class="form-input" placeholder="○○병원">
                 </div>
             </div>
             
@@ -381,7 +378,7 @@
             </div>
             
             <!-- 의료진 인증번호 -->
-            <div class="form-group full-width">
+            <div class="form-group full-width" style="display: none;">
                 <label for="medical-license">의료진 인증번호</label>
                 <input type="text" id="medical-license" class="form-input" placeholder="의사면허번호 (선택사항)">
                 <div class="help-text">의료진 인증을 위해 입력해주세요 (나중에 입력 가능)</div>

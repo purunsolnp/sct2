@@ -8,8 +8,8 @@ class UserCreate(BaseModel):
     password: str
     first_name: str
     last_name: str
-    specialty: str
-    hospital: str
+    specialty: Optional[str] = None
+    hospital: Optional[str] = None
     phone: Optional[str] = None
     medical_license: Optional[str] = None
 

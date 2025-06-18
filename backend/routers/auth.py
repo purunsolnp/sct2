@@ -8,6 +8,11 @@ from datetime import timedelta
 
 router = APIRouter()
 
+@router.get("/auth/check-id/{doctor_id}")
+def check_id_duplicate(doctor_id: str, db: Session = Depends(get_db)):
+    user = crud.get_user_by_doctor_id(db, doctor_id)
+    return {"exists": user is not None}
+
 @router.post("/login", response_model=TokenResponse)
 def login(user: UserLogin, db: Session = Depends(get_db)):
     """사용자 로그인"""

@@ -55,7 +55,7 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     user_data = user.dict()
     user_data["password"] = hashed_password
     
-    db_user = crud.create_user(db, user)
+    db_user = crud.create_user(db, UserCreate(**user_data))
     
     # JWT 토큰 생성
     access_token_expires = timedelta(minutes=30)

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database_config import get_db
+from auth_utils import get_current_user
 import openai
 import os
 import json
@@ -93,13 +94,35 @@ def calculate_gpt_cost(model: str, prompt_tokens: int, completion_tokens: int) -
     return 0.0
 
 @router.post("/gpt/interpret/{session_id}")
-async def gpt_interpret(session_id: str, db: Session = Depends(get_db)):
+async def gpt_interpret(
+    session_id: str, 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
     """SCT 세션에 대한 GPT 해석을 생성합니다."""
     try:
+        # 사용자 승인 상태 확인
+        if not current_user.is_verified:
+            raise HTTPException(
+                status_code=403, 
+                detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
+            )
+        
+        # 사용자 활성 상태 확인
+        if not current_user.is_active:
+            raise HTTPException(
+                status_code=403, 
+                detail="비활성화된 계정입니다. 관리자에게 문의하세요."
+            )
+        
         # 세션 조회
         session = get_session_by_id(db, session_id)
         if not session:
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+        
+        # 세션 소유자 확인
+        if session.doctor_id != current_user.doctor_id:
+            raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다.")
         
         # 응답 조회
         responses = get_responses_by_session_id(db, session_id)
@@ -175,11 +198,33 @@ async def gpt_interpret(session_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"해석 생성 중 오류가 발생했습니다: {str(e)}")
 
 @router.get("/gpt/interpret/{session_id}")
-async def get_interpretation(session_id: str, db: Session = Depends(get_db)):
+async def get_interpretation(
+    session_id: str, 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
     """기존 해석 결과를 조회합니다."""
+    # 사용자 승인 상태 확인
+    if not current_user.is_verified:
+        raise HTTPException(
+            status_code=403, 
+            detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
+        )
+    
+    # 사용자 활성 상태 확인
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=403, 
+            detail="비활성화된 계정입니다. 관리자에게 문의하세요."
+        )
+    
     session = get_session_by_id(db, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다.")
+    
+    # 세션 소유자 확인
+    if session.doctor_id != current_user.doctor_id:
+        raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다.")
     
     if not session.interpretation:
         raise HTTPException(status_code=404, detail="해석 결과가 없습니다.")

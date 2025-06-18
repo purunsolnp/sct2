@@ -96,6 +96,20 @@ def create_session(
 ):
     """새로운 SCT 세션을 생성합니다."""
     try:
+        # 사용자 승인 상태 확인
+        if not current_user.is_verified:
+            raise HTTPException(
+                status_code=403, 
+                detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
+            )
+        
+        # 사용자 활성 상태 확인
+        if not current_user.is_active:
+            raise HTTPException(
+                status_code=403, 
+                detail="비활성화된 계정입니다. 관리자에게 문의하세요."
+            )
+        
         doctor_id = current_user.doctor_id
         print(f"세션 생성 시작 - doctor_id: {doctor_id}, patient_name: {session.patient_name}")
         
@@ -127,11 +141,33 @@ def create_session(
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/sct/sessions/{session_id}")
-def get_session(session_id: str, db: Session = Depends(get_db)):
+def get_session(
+    session_id: str, 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
     """특정 세션 정보를 조회합니다."""
+    # 사용자 승인 상태 확인
+    if not current_user.is_verified:
+        raise HTTPException(
+            status_code=403, 
+            detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
+        )
+    
+    # 사용자 활성 상태 확인
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=403, 
+            detail="비활성화된 계정입니다. 관리자에게 문의하세요."
+        )
+    
     session = crud.get_session_by_id(db, session_id)
     if not session:
         raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+    
+    # 세션 소유자 확인
+    if session.doctor_id != current_user.doctor_id:
+        raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다.")
     
     # SCT 문항 추가
     items = []
@@ -163,13 +199,36 @@ def get_session(session_id: str, db: Session = Depends(get_db)):
     return response_data
 
 @router.post("/sct/sessions/{session_id}/responses")
-def save_responses(session_id: str, responses: Dict[str, List[SCTResponseCreate]], db: Session = Depends(get_db)):
+def save_responses(
+    session_id: str, 
+    responses: Dict[str, List[SCTResponseCreate]], 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
     """SCT 검사 응답을 임시 저장합니다."""
     try:
+        # 사용자 승인 상태 확인
+        if not current_user.is_verified:
+            raise HTTPException(
+                status_code=403, 
+                detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
+            )
+        
+        # 사용자 활성 상태 확인
+        if not current_user.is_active:
+            raise HTTPException(
+                status_code=403, 
+                detail="비활성화된 계정입니다. 관리자에게 문의하세요."
+            )
+        
         # 세션 조회
         session = crud.get_session_by_id(db, session_id)
         if not session:
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 세션 소유자 확인
+        if session.doctor_id != current_user.doctor_id:
+            raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다.")
         
         # 응답 저장 (상태는 변경하지 않음)
         session.responses = [response.dict() for response in responses["responses"]]
@@ -180,13 +239,36 @@ def save_responses(session_id: str, responses: Dict[str, List[SCTResponseCreate]
         raise HTTPException(status_code=500, detail=f"응답 저장 중 오류가 발생했습니다: {str(e)}")
 
 @router.post("/sct/sessions/{session_id}/complete")
-def complete_session(session_id: str, responses: Dict[str, List[SCTResponseCreate]], db: Session = Depends(get_db)):
+def complete_session(
+    session_id: str, 
+    responses: Dict[str, List[SCTResponseCreate]], 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
     """SCT 검사를 완료 처리합니다."""
     try:
+        # 사용자 승인 상태 확인
+        if not current_user.is_verified:
+            raise HTTPException(
+                status_code=403, 
+                detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
+            )
+        
+        # 사용자 활성 상태 확인
+        if not current_user.is_active:
+            raise HTTPException(
+                status_code=403, 
+                detail="비활성화된 계정입니다. 관리자에게 문의하세요."
+            )
+        
         # 세션 조회
         session = crud.get_session_by_id(db, session_id)
         if not session:
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 세션 소유자 확인
+        if session.doctor_id != current_user.doctor_id:
+            raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다.")
         
         # 응답 저장 및 상태 업데이트
         session.responses = [response.dict() for response in responses["responses"]]
@@ -199,13 +281,35 @@ def complete_session(session_id: str, responses: Dict[str, List[SCTResponseCreat
         raise HTTPException(status_code=500, detail=f"검사 완료 처리 중 오류가 발생했습니다: {str(e)}")
 
 @router.get("/sct/sessions/{session_id}/responses")
-def get_session_responses(session_id: str, db: Session = Depends(get_db)):
+def get_session_responses(
+    session_id: str, 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
     """세션의 응답 목록을 조회합니다."""
     try:
+        # 사용자 승인 상태 확인
+        if not current_user.is_verified:
+            raise HTTPException(
+                status_code=403, 
+                detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
+            )
+        
+        # 사용자 활성 상태 확인
+        if not current_user.is_active:
+            raise HTTPException(
+                status_code=403, 
+                detail="비활성화된 계정입니다. 관리자에게 문의하세요."
+            )
+        
         # 세션 조회
         session = crud.get_session_by_id(db, session_id)
         if not session:
             raise HTTPException(status_code=404, detail="세션을 찾을 수 없습니다")
+        
+        # 세션 소유자 확인
+        if session.doctor_id != current_user.doctor_id:
+            raise HTTPException(status_code=403, detail="해당 세션에 대한 접근 권한이 없습니다.")
         
         if not session.responses:
             return {"responses": []}
@@ -255,8 +359,30 @@ def get_interpretation(session_id: str, db: Session = Depends(get_db)):
     }
 
 @router.get("/sct/sessions/by-user/{user_id}")
-def list_sessions_by_user(user_id: str, db: Session = Depends(get_db)):
-    """사용자별 세션 목록을 조회합니다."""
+def list_sessions_by_user(
+    user_id: str, 
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user)
+):
+    """특정 사용자의 세션 목록을 조회합니다."""
+    # 사용자 승인 상태 확인
+    if not current_user.is_verified:
+        raise HTTPException(
+            status_code=403, 
+            detail="승인되지 않은 계정입니다. 관리자에게 문의하세요."
+        )
+    
+    # 사용자 활성 상태 확인
+    if not current_user.is_active:
+        raise HTTPException(
+            status_code=403, 
+            detail="비활성화된 계정입니다. 관리자에게 문의하세요."
+        )
+    
+    # 본인의 세션만 조회 가능
+    if user_id != current_user.doctor_id:
+        raise HTTPException(status_code=403, detail="다른 사용자의 세션을 조회할 권한이 없습니다.")
+    
     sessions = crud.get_sessions_by_user(db, user_id)
     
     # 세션 목록을 JSON 직렬화 가능한 형태로 변환

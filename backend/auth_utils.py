@@ -71,9 +71,14 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 async def get_current_admin_user(current_user = Depends(get_current_user)):
     """현재 인증된 관리자 사용자 가져오기"""
+    print(f"Admin 권한 확인 중: doctor_id={current_user.doctor_id}, is_admin={current_user.is_admin}")
+    
     if not current_user.is_admin:
+        print(f"Admin 권한 없음: {current_user.doctor_id}")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Not enough permissions"
+            detail=f"Not enough permissions. User {current_user.doctor_id} is not an admin."
         )
+    
+    print(f"Admin 권한 확인됨: {current_user.doctor_id}")
     return current_user 

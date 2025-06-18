@@ -79,6 +79,15 @@ def authenticate_user(db: Session, user_login):
 def get_session_by_id(db: Session, session_id: str):
     return db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
 
+def get_responses_by_session_id(db: Session, session_id: str):
+    """세션 ID로 응답 목록을 조회합니다."""
+    session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
+    if not session or not session.responses:
+        return []
+    
+    # responses는 JSON 형태로 저장되어 있으므로 그대로 반환
+    return session.responses
+
 def submit_session_responses(db: Session, session_id: str, responses):
     session = db.query(SCTSession).filter(SCTSession.session_id == session_id).first()
     if not session:

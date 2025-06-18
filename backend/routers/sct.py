@@ -10,24 +10,72 @@ from auth_utils import get_current_user
 
 router = APIRouter()
 
-# SCT 검사 항목들
+# SCT 문항 데이터
 SCT_ITEMS = [
-    "나는 사람들과 함께 있을 때",
-    "나는 혼자 있을 때",
-    "나는 미래에 대해",
-    "나는 과거에 대해",
-    "나는 성공했을 때",
-    "나는 실패했을 때",
-    "나는 화가 날 때",
-    "나는 기쁠 때",
-    "나는 슬플 때",
-    "나는 화가 날 때",
-    "나는 기쁠 때",
-    "나는 슬플 때",
-    "나는 화가 날 때",
-    "나는 기쁠 때",
-    "나는 슬플 때"
+    "나에게 이상한 일이 생겼을 때",
+    "내 생각에 가끔 아버지는",
+    "우리 윗사람들은",
+    "나의 장래는",
+    "어리석게도 내가 두려워하는 것은",
+    "내 생각에 참다운 친구는",
+    "내가 어렸을 때는",
+    "남자에 대해서 무엇보다 좋지 않게 생각하는 것은",
+    "내가 바라는 여인상(女人像)은",
+    "남녀가 같이 있는 것을 볼 때",
+    "내가 늘 원하기는",
+    "다른 가정과 비교해서 우리 집안은",
+    "나의 어머니는",
+    "무슨 일을 해서라도 잊고 싶은 것은",
+    "내가 믿고 있는 내 능력은",
+    "내가 정말 행복할 수 있으려면",
+    "어렸을 때 잘못했다고 느끼는 것은",
+    "내가 보는 나의 앞날은",
+    "대개 아버지들이란",
+    "내 생각에 남자들이란",
+    "다른 친구들이 모르는 나만의 두려움은",
+    "내가 싫어하는 사람은",
+    "결혼 생활에 대한 나의 생각은",
+    "우리 가족이 나에 대해서",
+    "내 생각에 여자들이란",
+    "어머니와 나는",
+    "내가 저지른 가장 큰 잘못은",
+    "언젠가 나는",
+    "내가 바라기에 아버지는",
+    "나의 야망은",
+    "윗사람이 오는 것을 보면 나는",
+    "내가 제일 좋아하는 사람은",
+    "내가 다시 젊어진다면",
+    "나의 가장 큰 결점은",
+    "내가 아는 대부분의 집안은",
+    "완전한 남성상(男性像)은",
+    "내가 성교를 했다면",
+    "행운이 나를 외면했을 때",
+    "대개 어머니들이란",
+    "내가 잊고 싶은 두려움은",
+    "내가 평생 가장 하고 싶은 일은",
+    "내가 늙으면",
+    "때때로 두려운 생각이 나를 휩쌀 때",
+    "내가 없을 때 친구들은",
+    "생생한 어린 시절의 기억은",
+    "무엇보다도 좋지 않게 여기는 것은",
+    "나의 성 생활은",
+    "내가 어렸을 때 우리 가족은",
+    "나는 어머니를 좋아했지만",
+    "아버지와 나는"
 ]
+
+# 문항별 해석 가이드 상수
+SCT_ITEM_CATEGORIES = {
+    "가족관계": [2, 13, 19, 26, 29, 39, 48, 49, 50],
+    "대인관계": [6, 22, 32, 44],
+    "자아개념": [15, 34, 30],
+    "정서조절": [5, 21, 40, 43],
+    "성_결혼관": [8, 9, 10, 23, 25, 36, 37, 47],
+    "미래전망": [4, 16, 18, 28, 41, 42],
+    "과거경험": [7, 17, 33, 45],
+    "현실적응": [1, 3, 11, 31, 38, 46],
+    "성격특성": [12, 14, 20, 24, 27, 35],
+}
 
 @router.get("/sct/items")
 def get_sct_items():
@@ -160,4 +208,25 @@ def get_interpretation(session_id: str, db: Session = Depends(get_db)):
 def list_sessions_by_user(user_id: str, db: Session = Depends(get_db)):
     """사용자별 세션 목록을 조회합니다."""
     sessions = crud.get_sessions_by_user(db, user_id)
-    return {"sessions": sessions, "total_count": len(sessions)} 
+    
+    # 세션 목록을 JSON 직렬화 가능한 형태로 변환
+    session_list = []
+    for session in sessions:
+        session_data = {
+            "session_id": str(session.session_id),
+            "patient_name": str(session.patient_name),
+            "doctor_id": str(session.doctor_id),
+            "status": str(session.status),
+            "created_at": session.created_at.isoformat(),
+            "submitted_at": session.submitted_at.isoformat() if session.submitted_at else None,
+            "expires_at": session.expires_at.isoformat(),
+            "responses": session.responses if session.responses else [],
+            "interpretation": session.interpretation
+        }
+        session_list.append(session_data)
+    
+    print("=== 세션 목록 조회 응답 데이터 ===")
+    print(json.dumps({"sessions": session_list, "total_count": len(session_list)}, ensure_ascii=False, indent=2))
+    print("=====================")
+    
+    return {"sessions": session_list, "total_count": len(session_list)} 
